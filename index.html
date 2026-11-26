@@ -1,0 +1,3199 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>堂上表現計分板 (多班別 5×6 座位表) | Classroom Scoreboard</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+
+    body {
+      font-family: 'Inter', 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    @keyframes popFloat {
+      0% { opacity: 1; transform: translate(-50%, 0) scale(0.85); }
+      40% { opacity: 1; transform: translate(-50%, -26px) scale(1.18); }
+      100% { opacity: 0; transform: translate(-50%, -52px) scale(1); }
+    }
+
+    .score-float {
+      position: absolute;
+      left: 50%;
+      top: 28%;
+      pointer-events: none;
+      font-weight: 800;
+      font-size: 1.2rem;
+      white-space: nowrap;
+      z-index: 30;
+      animation: popFloat 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes cardBump {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
+
+    .bump {
+      animation: cardBump 0.22s ease-out;
+    }
+
+    @keyframes pulseRing {
+      0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45); }
+      70% { box-shadow: 0 0 0 14px rgba(99, 102, 241, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+    }
+
+    .picker-highlight {
+      animation: pulseRing 0.9s infinite;
+    }
+
+    .seat-dragging {
+      opacity: 0.35;
+      transform: scale(0.97);
+    }
+
+    .seat-drop-target {
+      border-color: #4f46e5 !important;
+      background-color: #eef2ff !important;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.25) !important;
+      transform: scale(1.02);
+    }
+
+    body.is-dragging-seat {
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: grabbing !important;
+    }
+
+    @keyframes eggWobble {
+      0%, 100% { transform: rotate(0deg) scale(1); }
+      20% { transform: rotate(-12deg) scale(1.08); }
+      40% { transform: rotate(12deg) scale(1.1); }
+      60% { transform: rotate(-8deg) scale(1.06); }
+      80% { transform: rotate(6deg) scale(1.03); }
+    }
+
+    .poke-wobble {
+      animation: eggWobble 0.55s ease-in-out;
+    }
+
+    @keyframes evoBurst {
+      0% { transform: scale(0.5); opacity: 0; }
+      60% { transform: scale(1.18); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .evo-pop {
+      animation: evoBurst 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    @keyframes eggIdle {
+      0%, 72%, 100% { transform: rotate(0deg) translateY(0); }
+      78% { transform: rotate(-7deg) translateY(-1px); }
+      84% { transform: rotate(7deg) translateY(-1px); }
+      90% { transform: rotate(-4deg) translateY(0); }
+      95% { transform: rotate(3deg) translateY(0); }
+    }
+
+    .egg-idle {
+      animation: eggIdle 3.2s ease-in-out infinite;
+      transform-origin: bottom center;
+    }
+
+    @keyframes pokeIdle {
+      0%, 100% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-3px) scale(1.04); }
+    }
+
+    .poke-idle {
+      animation: pokeIdle 1.8s ease-in-out infinite;
+    }
+
+    @keyframes hitFlash {
+      0%, 100% { filter: brightness(1); }
+      40% { filter: brightness(2.2) saturate(1.8); }
+    }
+
+    .fighter-hit {
+      animation: hitFlash 0.25s ease-out;
+    }
+
+    @keyframes sparkPop {
+      0% { transform: translate(-50%, -50%) scale(0.4); opacity: 1; }
+      100% { transform: translate(-50%, -85%) scale(1.45); opacity: 0; }
+    }
+
+    .battle-spark {
+      position: absolute;
+      pointer-events: none;
+      font-weight: 900;
+      z-index: 40;
+      animation: sparkPop 0.55s ease-out forwards;
+    }
+
+    @keyframes arenaShake {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-6px, 4px); }
+      40% { transform: translate(6px, -4px); }
+      60% { transform: translate(-4px, -3px); }
+      80% { transform: translate(4px, 3px); }
+    }
+
+    .arena-shake {
+      animation: arenaShake 0.28s ease-in-out;
+    }
+
+    @keyframes critFlash {
+      0% { opacity: 0.45; }
+      100% { opacity: 0; }
+    }
+
+    .crit-flash-overlay {
+      animation: critFlash 0.28s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col">
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shrink-0">
+    <div class="max-w-[1440px] mx-auto px-3 sm:px-5 h-12 flex items-center justify-between gap-2">
+      <!-- Brand + Editable Title -->
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+          <i data-lucide="layout-grid" class="w-4 h-4"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1">
+            <h1 id="classTitleDisplay" class="text-sm sm:text-base font-extrabold text-slate-900 truncate">堂上表現計分板</h1>
+            <button id="editTitleBtn" type="button" title="修改標題" class="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+          <p id="subtitleStats" class="text-[11px] text-slate-500 hidden sm:block leading-tight">5C · 28 位學生 · 按名字可改名 · 拉空白位調位</p>
+        </div>
+      </div>
+
+      <!-- Mode Switcher (Desktop) -->
+      <nav class="hidden md:flex items-center bg-slate-100 p-0.5 rounded-xl" aria-label="模式切換">
+        <button id="tabStudents" type="button" data-tab="students" class="tab-btn px-3 py-1 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-white text-indigo-600 shadow-sm">
+          個人座位表 (5×6)
+        </button>
+        <button id="tabGroups" type="button" data-tab="groups" class="tab-btn px-3 py-1 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-600 hover:text-slate-900">
+          小組計分
+        </button>
+        <button id="tabHistory" type="button" data-tab="history" class="tab-btn px-3 py-1 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-600 hover:text-slate-900">
+          計分紀錄
+        </button>
+      </nav>
+
+      <!-- Action Toolbar -->
+      <div class="flex items-center gap-1.5">
+        <button id="gasSyncBtn" type="button" title="儲存總分至 Google Sheets (GAS)" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors">
+          <i id="gasSyncIcon" data-lucide="cloud-upload" class="w-4 h-4 text-emerald-600"></i>
+          <span id="gasSyncLabel" class="hidden lg:inline">儲存到 Sheets</span>
+        </button>
+        <button id="openTimerBtn" type="button" title="倒數計時器" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
+          <i data-lucide="timer" class="w-4 h-4 text-indigo-600"></i>
+          <span id="headerTimerLabel" class="hidden sm:inline">計時器</span>
+        </button>
+        <button id="openPickerBtn" type="button" title="隨機抽籤" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 transition-colors">
+          <i data-lucide="dices" class="w-4 h-4 text-amber-600"></i>
+          <span class="hidden sm:inline">抽籤</span>
+        </button>
+        <button id="soundToggleBtn" type="button" title="開關音效" class="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
+          <i id="soundIcon" data-lucide="volume-2" class="w-4 h-4"></i>
+        </button>
+        <button id="openSettingsBtn" type="button" title="設定名單、GAS 同步與匯出" class="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mode Switcher (Mobile) -->
+    <div class="md:hidden px-3 pb-2">
+      <div class="grid grid-cols-3 bg-slate-100 p-0.5 rounded-xl gap-1">
+        <button type="button" data-tab="students" class="tab-btn-mobile py-1 rounded-lg text-xs font-semibold transition-all bg-white text-indigo-600 shadow-sm">座位表 5×6</button>
+        <button type="button" data-tab="groups" class="tab-btn-mobile py-1 rounded-lg text-xs font-semibold transition-all text-slate-600">小組計分</button>
+        <button type="button" data-tab="history" class="tab-btn-mobile py-1 rounded-lg text-xs font-semibold transition-all text-slate-600">計分紀錄</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 min-h-0 max-w-[1440px] w-full mx-auto px-3 sm:px-5 py-2 flex flex-col overflow-hidden">
+    <!-- Class Tabs Bar (Replaces old 1-6 headers; switches between classes) -->
+    <div class="flex items-center justify-between gap-2 mb-1.5 shrink-0">
+      <div class="flex items-center gap-1.5 overflow-x-auto py-0.5">
+        <div id="classTabsList" class="flex items-center gap-1.5"></div>
+        <button id="addClassBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-white hover:bg-indigo-50 text-indigo-600 border border-dashed border-indigo-300 shrink-0 transition-colors">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span>新增班別</span>
+        </button>
+      </div>
+
+      <div id="boardControls" class="flex items-center gap-1.5 shrink-0">
+        <button id="classBonusBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>全體 +1</span>
+        </button>
+        <button id="globalStampModeBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border border-yellow-300 transition-colors">
+          <span>💮</span>
+          <span id="globalStampModeLabel">全體吸印</span>
+        </button>
+        <button id="battleRoyaleBtn" type="button" title="所有精靈跳出來大亂鬥！" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-colors">
+          <span>⚔️</span>
+          <span>大亂鬥</span>
+        </button>
+        <button id="resetEggsBtn" type="button" title="將本班所有精靈變回精靈蛋（不影響分數）" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition-colors">
+          <span>🥚</span>
+          <span>蛋重置</span>
+        </button>
+        <button id="undoBtn" type="button" disabled class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">撤銷</span>
+        </button>
+        <button id="celebrateBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors">
+          <i data-lucide="party-popper" class="w-3.5 h-3.5 text-rose-500"></i>
+          <span class="hidden sm:inline">排行</span>
+        </button>
+        <span id="gasStatusPill" class="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-600">
+          <span id="gasStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+          <span id="gasStatusText">已填 GAS</span>
+        </span>
+
+        <button id="resetScoresBtn" type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 transition-colors">
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">歸零</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Students 5x6 Fixed Seating Chart View (1-page vertical fit, horizontal scroll allowed) -->
+    <section id="studentsView" class="flex-1 min-h-0 w-full overflow-x-auto overflow-y-hidden flex flex-col">
+      <div class="min-w-[960px] h-full flex flex-col">
+        <!-- 5 Rows x 6 Columns = 30 Fixed Seats -->
+        <div id="seatingGrid" class="flex-1 min-h-0 grid grid-cols-6 grid-rows-5 gap-2"></div>
+      </div>
+    </section>
+
+    <!-- Groups View -->
+    <section id="groupsView" class="hidden flex-1 min-h-0 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 pb-4"></section>
+
+    <!-- History View -->
+    <section id="historyView" class="hidden flex-1 min-h-0 overflow-y-auto space-y-4 pb-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 id="historyTitleHeading" class="text-base font-bold text-slate-900">課堂計分與吸印紀錄</h2>
+            <p class="text-xs text-slate-500 mt-0.5">黃色吸印狀態下人手扣分只扣可用分，累積總分完全保留</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="exportCsvBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>匯出 CSV</span>
+            </button>
+            <button id="clearHistoryBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 transition-colors">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+              <span>清除紀錄</span>
+            </button>
+          </div>
+        </div>
+        <div id="historyList" class="divide-y divide-slate-100 max-h-[62vh] overflow-y-auto"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Floating Mini Timer Pill -->
+  <div id="floatingTimer" class="hidden fixed bottom-5 right-5 z-40 bg-slate-900 text-white rounded-2xl shadow-xl px-4 py-2.5 flex items-center gap-3 border border-slate-700">
+    <i data-lucide="timer" class="w-4 h-4 text-amber-400"></i>
+    <span id="floatingTimerDisplay" class="font-mono text-lg font-bold tracking-wider">03:00</span>
+    <button id="floatingTimerOpenBtn" type="button" class="text-xs bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-lg font-semibold transition-colors">展開</button>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <!-- Modal: Edit Student Name (Triggered by clicking student name or 空位) -->
+  <div id="editNameModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 border border-slate-200">
+      <h3 id="editNameModalTitle" class="text-base font-bold text-slate-900">更改學生姓名</h3>
+      <p class="text-xs text-slate-500 mt-0.5">留空會變回「空位」</p>
+      <input id="editNameInput" type="text" placeholder="輸入學生姓名" class="mt-3 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      <div class="flex items-center justify-between gap-2 mt-4">
+        <button id="clearSeatNameBtn" type="button" class="px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100">設為空位</button>
+        <div class="flex gap-2">
+          <button type="button" data-close-modal="editNameModal" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">取消</button>
+          <button id="saveSeatNameBtn" type="button" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">儲存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add / Rename Class Tab -->
+  <div id="classTabModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 border border-slate-200">
+      <h3 id="classTabModalTitle" class="text-base font-bold text-slate-900">新增班別</h3>
+      <input id="classTabNameInput" type="text" placeholder="例如：5D、6A、數學組" class="mt-3 w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+      <div class="flex items-center justify-between gap-2 mt-4">
+        <button id="deleteClassTabBtn" type="button" class="hidden px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100">刪除此班</button>
+        <div class="flex gap-2 ml-auto">
+          <button type="button" data-close-modal="classTabModal" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">取消</button>
+          <button id="saveClassTabBtn" type="button" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">確定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Student Pokémon Status & New Egg -->
+  <div id="pokeInfoModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 text-center">
+      <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+        <h3 id="pokeInfoTitle" class="text-base font-bold text-slate-900">精靈夥伴</h3>
+        <button type="button" data-close-modal="pokeInfoModal" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div id="pokeInfoVisual" class="flex items-center justify-center min-h-[104px] bg-slate-50 rounded-2xl border border-slate-100 p-3"></div>
+        <div>
+          <div id="pokeInfoName" class="text-lg font-black text-slate-900">精靈蛋</div>
+          <div id="pokeInfoStage" class="text-xs font-semibold text-slate-500 mt-0.5">每次加分都有機會孵化或進化</div>
+        </div>
+        <div id="pokeCollectedSection" class="hidden text-left bg-amber-50/70 border border-amber-200/80 rounded-xl p-3">
+          <div class="text-xs font-bold text-amber-900 mb-1.5">已收集精靈圖鑑</div>
+          <div id="pokeCollectedList" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div id="pokeNewEggRow" class="hidden">
+          <button id="claimNewEggBtn" type="button" class="w-full py-2.5 rounded-xl font-bold text-sm text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-colors">
+            🥚 收入圖鑑並領取新精靈蛋
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Random Picker -->
+  <div id="pickerModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 text-center">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="dices" class="w-5 h-5 text-amber-500"></i>
+          <span>課堂隨機抽籤</span>
+        </h3>
+        <button type="button" data-close-modal="pickerModal" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-5">
+        <div class="inline-flex bg-slate-100 p-1 rounded-xl">
+          <button id="pickScopeStudents" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-indigo-600 shadow-sm">抽學生</button>
+          <button id="pickScopeGroups" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600">抽小組</button>
+        </div>
+
+        <div id="pickerDisplayBox" class="py-10 px-4 rounded-2xl bg-indigo-50/70 border-2 border-indigo-200 flex flex-col items-center justify-center min-h-[140px]">
+          <span id="pickerResultText" class="text-3xl sm:text-4xl font-black text-indigo-700">準備抽籤</span>
+          <span id="pickerResultSub" class="text-xs text-slate-500 mt-2">按下「開始抽籤」隨機選出對象</span>
+        </div>
+
+        <div class="flex flex-col gap-2.5">
+          <button id="startPickBtn" type="button" class="w-full py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors text-base">
+            開始抽籤
+          </button>
+          <div id="pickerAwardRow" class="hidden grid grid-cols-2 gap-2">
+            <button id="pickerAwardPlus1" type="button" class="py-2.5 rounded-xl font-bold text-sm bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200">+1 分</button>
+            <button id="pickerAwardPlus2" type="button" class="py-2.5 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white">+2 分</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Classroom Timer -->
+  <div id="timerModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 text-center">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="timer" class="w-5 h-5 text-indigo-600"></i>
+          <span>堂上倒數計時器</span>
+        </h3>
+        <button type="button" data-close-modal="timerModal" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-5">
+        <div class="flex flex-wrap justify-center gap-2">
+          <button type="button" data-timer-sec="60" class="timer-preset px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700">1 分鐘</button>
+          <button type="button" data-timer-sec="180" class="timer-preset px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700">3 分鐘</button>
+          <button type="button" data-timer-sec="300" class="timer-preset px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700">5 分鐘</button>
+          <button type="button" data-timer-sec="600" class="timer-preset px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700">10 分鐘</button>
+        </div>
+
+        <div class="py-6">
+          <div id="timerDisplay" class="font-mono text-6xl font-black text-slate-900 tracking-tight">03:00</div>
+          <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mt-5">
+            <div id="timerProgressBar" class="h-full bg-indigo-600 transition-all duration-300" style="width: 100%"></div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-center gap-2">
+          <input id="customMinutesInput" type="number" min="0" max="60" value="3" class="w-16 text-center py-1.5 rounded-lg border border-slate-300 text-sm font-semibold" aria-label="分鐘" />
+          <span class="text-xs font-semibold text-slate-500">分</span>
+          <input id="customSecondsInput" type="number" min="0" max="59" value="0" class="w-16 text-center py-1.5 rounded-lg border border-slate-300 text-sm font-semibold" aria-label="秒" />
+          <span class="text-xs font-semibold text-slate-500">秒</span>
+          <button id="applyCustomTimerBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white">設定</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+          <button id="timerStartPauseBtn" type="button" class="py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors">開始倒數</button>
+          <button id="timerResetBtn" type="button" class="py-3 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors">重設</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settings -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <h3 class="text-lg font-bold text-slate-900">計分板設定</h3>
+        <button type="button" data-close-modal="settingsModal" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="px-5 pt-3 border-b border-slate-100 flex flex-wrap gap-4 shrink-0">
+        <button type="button" data-settings-tab="roster" class="settings-tab-btn pb-2.5 text-sm font-bold border-b-2 border-indigo-600 text-indigo-600">本班 5×6 座位表與小組</button>
+        <button type="button" data-settings-tab="gas" class="settings-tab-btn pb-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800">GAS 雲端同步</button>
+        <button type="button" data-settings-tab="data" class="settings-tab-btn pb-2.5 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800">資料與標題</button>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-5 flex-1">
+        <!-- Tab 1: Roster -->
+        <div id="settingsRosterPane" class="space-y-5">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label id="seatEditorLabel" class="block text-sm font-bold text-slate-800">5×6 座位表姓名設定（留空代表空位）</label>
+              <span class="text-xs text-slate-500">共 5 排 × 6 欄</span>
+            </div>
+            <div class="overflow-x-auto">
+              <div class="min-w-[540px]">
+                <div id="seatEditorGrid" class="grid grid-cols-6 gap-1.5"></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label for="groupNamesInput" class="block text-sm font-bold text-slate-800 mb-1">小組名稱（每行一組）</label>
+            <textarea id="groupNamesInput" rows="4" class="w-full rounded-xl border border-slate-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+          </div>
+          <div class="flex justify-end">
+            <button id="saveRosterBtn" type="button" class="px-4 py-2.5 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">儲存座位表與名單</button>
+          </div>
+        </div>
+
+        <!-- Tab 2: GAS Cloud Sync -->
+        <div id="settingsGasPane" class="hidden space-y-4">
+          <div class="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+            <div>
+              <label for="gasUrlInput" class="block text-sm font-bold text-emerald-950 mb-1">Google Apps Script 網頁應用程式網址 (Web App URL)</label>
+              <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/....../exec" class="w-full px-3 py-2 rounded-xl border border-emerald-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              <div id="gasLibraryWarning" class="hidden mt-2 p-2.5 rounded-lg bg-amber-100 border border-amber-300 text-xs text-amber-950 font-medium">
+                ⚠️ 偵測到目前網址係 <code>/macros/library/</code>（程式庫網址），瀏覽器無法直接存取。請喺 Apps Script 點選「部署 → 新增部署作業 → <strong>網頁應用程式</strong>（所有人可存取）」，將產出嘅 <code>https://script.google.com/macros/s/.../exec</code> 網址貼喺上面即可成功同步！
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="inline-flex items-center gap-2 text-xs font-semibold text-emerald-900 cursor-pointer">
+                <input id="gasAutoSyncCheckbox" type="checkbox" class="rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 w-4 h-4" />
+                <span>每次加減分後自動儲存目前班別到 Google Sheets</span>
+              </label>
+              <button id="saveGasSettingsBtn" type="button" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white">儲存網址設定</button>
+            </div>
+
+            <div class="flex flex-wrap gap-2 pt-1">
+              <button id="gasPushNowBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white">
+                <i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i>
+                <span>立即儲存本班總分到 Sheets</span>
+              </button>
+              <button id="gasPullNowBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-300 hover:bg-slate-100 text-slate-800">
+                <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i>
+                <span>從 Sheets 讀取本班分數</span>
+              </button>
+            </div>
+            <p id="gasFeedbackMsg" class="text-xs text-emerald-800"></p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <h4 class="text-sm font-bold text-slate-800">多班別 Code.gs（自動按班別建立獨立工作表）</h4>
+              <button id="copyGasCodeBtn" type="button" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span>複製 Code.gs</span>
+              </button>
+            </div>
+            <textarea id="gasCodePreview" readonly rows="8" class="w-full font-mono text-xs bg-slate-900 text-emerald-300 p-3 rounded-xl border border-slate-700"></textarea>
+          </div>
+        </div>
+
+        <!-- Tab 3: Data & Title -->
+        <div id="settingsDataPane" class="hidden space-y-5">
+          <div>
+            <label for="classTitleInput" class="block text-sm font-bold text-slate-800 mb-1">計分板標題</label>
+            <div class="flex gap-2">
+              <input id="classTitleInput" type="text" class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+              <button id="saveTitleBtn" type="button" class="px-4 py-2 rounded-xl text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white">更新標題</button>
+            </div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+            <h4 class="text-sm font-bold text-slate-800">資料匯出與還原</h4>
+            <p class="text-xs text-slate-500">所有班別的可用分與累積總分會自動儲存在瀏覽器，亦可透過 GAS 同步至 Google Sheets 或匯出 CSV。</p>
+            <div class="flex flex-wrap gap-2">
+              <button id="settingsExportCsvBtn" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700">匯出本班 CSV</button>
+              <button id="factoryResetBtn" type="button" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700">還原預設座位表</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirm Dialog -->
+  <div id="confirmModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 border border-slate-200">
+      <h3 id="confirmTitle" class="text-base font-bold text-slate-900">確認操作</h3>
+      <p id="confirmMessage" class="text-sm text-slate-600 mt-1.5"></p>
+      <div class="flex justify-end gap-2 mt-5">
+        <button id="confirmCancelBtn" type="button" class="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700">取消</button>
+        <button id="confirmOkBtn" type="button" class="px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white">確認</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overlay: Pokémon Battle Royale Arena -->
+  <div id="battleOverlay" class="hidden fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-sm flex flex-col items-center justify-center p-3 sm:p-6">
+    <div class="w-full max-w-5xl h-[86vh] bg-gradient-to-b from-indigo-950 via-slate-900 to-indigo-950 rounded-3xl border-2 border-amber-400/60 shadow-2xl flex flex-col overflow-hidden relative">
+      <!-- Arena Header -->
+      <div class="px-5 py-3 bg-slate-950/70 border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">⚔️</span>
+          <div>
+            <h3 id="battleTitle" class="text-base sm:text-lg font-black text-white tracking-wide">精靈大亂鬥！</h3>
+            <p id="battleStatusText" class="text-xs text-amber-300 font-semibold">準備跳入場地...</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="battleAliveBadge" class="px-3 py-1 rounded-full text-xs font-extrabold bg-amber-400/20 text-amber-300 border border-amber-400/40">存活：0</span>
+          <button id="battleCloseQuickBtn" type="button" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white transition-colors">返回座位</button>
+        </div>
+      </div>
+
+      <!-- Arena Stage -->
+      <div id="battleArenaStage" class="flex-1 relative overflow-hidden">
+        <!-- Decorative Arena Ring -->
+        <div class="pointer-events-none absolute inset-6 rounded-full border-2 border-dashed border-white/10"></div>
+        <div class="pointer-events-none absolute inset-16 rounded-full border border-white/5"></div>
+        <canvas id="battleFxCanvas" class="pointer-events-none absolute inset-0 w-full h-full z-20"></canvas>
+      </div>
+
+      <!-- Winner Banner (Shown when 1 survivor remains) -->
+      <div id="battleVictoryFooter" class="hidden px-5 py-4 bg-slate-950/90 border-t border-amber-400/40 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">👑</span>
+          <div>
+            <div id="battleWinnerHeadline" class="text-lg sm:text-xl font-black text-amber-300">大亂鬥冠軍！</div>
+            <div id="battleWinnerSub" class="text-xs text-slate-300">最後存活的精靈勝出！</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="battleRewardWinnerBtn" type="button" class="px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-md transition-colors">獎勵冠軍 +1 分</button>
+          <button id="battleFinishBtn" type="button" class="px-5 py-2.5 rounded-xl text-sm font-extrabold bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-md transition-colors">完成（返回位置）</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Winner Announcement -->
+  <div id="winnerModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200 text-center">
+      <div class="w-16 h-16 mx-auto rounded-2xl bg-amber-100 text-amber-500 flex items-center justify-center mb-3 text-3xl">👑</div>
+      <h3 id="winnerModalTitle" class="text-xl font-black text-slate-900">累積總分排行榜</h3>
+      <p id="winnerModalSub" class="text-xs text-slate-500 mt-1">以累積總分排名（吸印扣分唔會影響排名）</p>
+      <div id="winnerList" class="mt-4 space-y-2.5 text-left"></div>
+      <button type="button" data-close-modal="winnerModal" class="mt-6 w-full py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700">太棒了！</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'hk_classroom_scoreboard_v5_5c6a';
+      const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzERtDZMi6XYMVCYqaVbGvbpnK1FY8COYpMf2UjKL_HCu12EE7KX2f_IzB5moh29e0V/exec';
+
+      const GROUP_THEMES = [
+        { bg: 'bg-sky-50', border: 'border-sky-200', badge: 'bg-sky-600', text: 'text-sky-700', bar: 'bg-sky-500' },
+        { bg: 'bg-emerald-50', border: 'border-emerald-200', badge: 'bg-emerald-600', text: 'text-emerald-700', bar: 'bg-emerald-500' },
+        { bg: 'bg-amber-50', border: 'border-amber-200', badge: 'bg-amber-500', text: 'text-amber-700', bar: 'bg-amber-500' },
+        { bg: 'bg-rose-50', border: 'border-rose-200', badge: 'bg-rose-600', text: 'text-rose-700', bar: 'bg-rose-500' },
+        { bg: 'bg-violet-50', border: 'border-violet-200', badge: 'bg-violet-600', text: 'text-violet-700', bar: 'bg-violet-500' },
+        { bg: 'bg-teal-50', border: 'border-teal-200', badge: 'bg-teal-600', text: 'text-teal-700', bar: 'bg-teal-500' }
+      ];
+
+      const SEATS_5C = [
+        { name: '曾熙妍', score: 7 }, { name: '黃子睿', score: 10 }, { name: '張開逸', score: 10 }, { name: '林仕嘉', score: 10 }, { name: '梁梓樂', score: 5 }, { name: '徐梓昇', score: 10 },
+        { name: '栾清黃', score: 10 }, { name: '黃筱甯', score: 6 }, { name: '蕭政陽', score: 5 }, { name: '曾卓賢', score: 10 }, { name: '林子棋', score: 10 }, { name: '梁卓然', score: 9 },
+        { name: '彭洛恒', score: 1 }, { name: '曾浚僖', score: 7 }, { name: '李芷瑤', score: 10 }, { name: '唐逸菲', score: 8 }, { name: '李祺瑋', score: 3 }, { name: '蘇晉霆', score: 7 },
+        { name: '陳基立', score: 4 }, { name: '鄭家豪', score: 10 }, { name: '叶智偉', score: 1 }, { name: '李榐濠', score: 3 }, { name: '陳書緯', score: 10 }, { name: '羅智凌', score: 10 },
+        { name: '', score: 0 }, { name: '', score: 0 }, { name: '', score: 0 }, { name: '', score: 0 }, { name: '', score: 0 }, { name: '', score: 0 }
+      ];
+
+      const SEATS_6A = [
+        { name: '', score: 0 }, { name: '', score: 0 }, { name: '顧啟曦', score: 0 }, { name: '郭紫晴', score: 3 }, { name: '楊炎杰', score: 4 }, { name: '吳卉鈮', score: 6 },
+        { name: '李智華', score: 1 }, { name: '林雅渝', score: 0 }, { name: '林泳晴', score: 0 }, { name: '蔡瀚鋒', score: 1 }, { name: '賀瀚濤', score: 3 }, { name: '李梓彤', score: 1 },
+        { name: '張曉桐', score: 0 }, { name: '賀正曦', score: 7 }, { name: '蔡一樂', score: 0 }, { name: '林日朗', score: 4 }, { name: '陶影姿', score: 3 }, { name: '張志遠', score: 2 },
+        { name: '鄭祉瑜', score: 3 }, { name: '賀瀚詩', score: 4 }, { name: '胡莫甯', score: 7 }, { name: '吳爾朗', score: 1 }, { name: '鄒奕櫞', score: 5 }, { name: '陳紫希', score: 8 },
+        { name: '蕭亦駿', score: 0 }, { name: '邱洛玟', score: 10 }, { name: '郭俊熙', score: 3 }, { name: '徐雅琳', score: 3 }, { name: '王梓同', score: 1 }, { name: '姚澄晞', score: 4 }
+      ];
+
+      const POKEMON_LINES = [
+        [{ id: 1, name: '妙蛙種子', emoji: '🌱' }, { id: 2, name: '妙蛙草', emoji: '🌿' }, { id: 3, name: '妙蛙花', emoji: '🌺' }],
+        [{ id: 4, name: '小火龍', emoji: '🔥' }, { id: 5, name: '火恐龍', emoji: '🔥' }, { id: 6, name: '噴火龍', emoji: '🐉' }],
+        [{ id: 7, name: '傑尼龜', emoji: '💧' }, { id: 8, name: '卡咪龜', emoji: '💧' }, { id: 9, name: '水箭龜', emoji: '🐢' }],
+        [{ id: 172, name: '皮丘', emoji: '⚡' }, { id: 25, name: '皮卡丘', emoji: '⚡' }, { id: 26, name: '雷丘', emoji: '⚡' }],
+        [{ id: 147, name: '迷你龍', emoji: '🐲' }, { id: 148, name: '哈克龍', emoji: '🐲' }, { id: 149, name: '快龍', emoji: '🐉' }],
+        [{ id: 155, name: '火球鼠', emoji: '🔥' }, { id: 156, name: '火岩鼠', emoji: '🔥' }, { id: 157, name: '火爆獸', emoji: '🌋' }],
+        [{ id: 158, name: '小鋸鱷', emoji: '💧' }, { id: 159, name: '藍鱷', emoji: '💧' }, { id: 160, name: '大力鱷', emoji: '🐊' }],
+        [{ id: 252, name: '木守宮', emoji: '🍃' }, { id: 253, name: '森林蜥蜴', emoji: '🌿' }, { id: 254, name: '蜥蜴王', emoji: '🌳' }],
+        [{ id: 255, name: '火稚雞', emoji: '🐥' }, { id: 256, name: '力壯雞', emoji: '🔥' }, { id: 257, name: '火焰雞', emoji: '🦅' }],
+        [{ id: 258, name: '水躍魚', emoji: '🐟' }, { id: 259, name: '沼躍魚', emoji: '💧' }, { id: 260, name: '巨沼怪', emoji: '🌊' }],
+        [{ id: 443, name: '圓陸鯊', emoji: '🦈' }, { id: 444, name: '尖牙陸鯊', emoji: '🦈' }, { id: 445, name: '烈咬陸鯊', emoji: '🐉' }],
+        [{ id: 393, name: '波加曼', emoji: '🐧' }, { id: 394, name: '波皇子', emoji: '🐧' }, { id: 395, name: '帝王拿波', emoji: '👑' }]
+      ];
+
+      const GAS_CODE_TEMPLATE = ["/**", " * 堂上表現計分板 (多班別 5x6 座位表・含精靈紀錄版) — Google Apps Script 後端 (Code.gs)", " *", " * 更新部署步驟（保持同一個 /exec 網址）：", " * 1. 開啟你的 Google Sheets >「擴充功能」>「Apps Script」", " * 2. 用以下程式碼完整覆蓋舊版並按儲存 (Ctrl+S)", " * 3. 右上角「部署」>「管理部署作業」> 撳鉛筆圖示編輯", " * 4. 版本揀「新版本」> 按「部署」即可完成更新（網址不變！）", " */", "", "var SHEET_STUDENTS = '個人總分數';", "var SHEET_SEATING = '5x6座位表';", "var SHEET_GROUPS = '小組總分數';", "", "function getPrefix_(className) {", "  var clean = String(className || '').trim().replace(/[\\\\\\/\\?\\*\\[\\]:]/g, '');", "  return clean ? (clean + '_') : '';", "}", "", "function doGet(e) {", "  try {", "    var ss = SpreadsheetApp.getActiveSpreadsheet();", "    var className = (e && e.parameter && e.parameter.className) ? e.parameter.className : '';", "    var prefix = getPrefix_(className);", "    var result = {", "      ok: true,", "      className: className,", "      seats: readSeatsFromSheet_(ss, prefix + SHEET_STUDENTS) || (prefix ? readSeatsFromSheet_(ss, SHEET_STUDENTS) : null),", "      groups: readGroupsFromSheet_(ss, prefix + SHEET_GROUPS) || (prefix ? readGroupsFromSheet_(ss, SHEET_GROUPS) : null),", "      loadedAt: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss')", "    };", "    return jsonResponse_(result);", "  } catch (err) {", "    return jsonResponse_({ ok: false, error: err.message });", "  }", "}", "", "function doPost(e) {", "  try {", "    var raw = e && e.postData && e.postData.contents ? e.postData.contents : '{}';", "    var data = JSON.parse(raw);", "    var ss = SpreadsheetApp.getActiveSpreadsheet();", "    var nowStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');", "    var prefix = getPrefix_(data.className);", "", "    if (Array.isArray(data.seats)) {", "      writeStudentsSheet_(ss, prefix + SHEET_STUDENTS, data.seats, nowStr);", "      writeSeatingVisualSheet_(ss, prefix + SHEET_SEATING, data.seats, nowStr);", "    }", "", "    if (Array.isArray(data.groups)) {", "      writeGroupsSheet_(ss, prefix + SHEET_GROUPS, data.groups, nowStr);", "    }", "", "    SpreadsheetApp.flush();", "", "    return jsonResponse_({", "      ok: true,", "      className: data.className || '',", "      updatedAt: nowStr,", "      studentCount: Array.isArray(data.seats) ? data.seats.filter(function (s) { return s && s.name; }).length : 0", "    });", "  } catch (err) {", "    return jsonResponse_({ ok: false, error: err.message });", "  }", "}", "", "function getOrCreateSheet_(ss, name) {", "  var sheet = ss.getSheetByName(name);", "  if (!sheet) {", "    sheet = ss.insertSheet(name);", "  }", "  return sheet;", "}", "", "function writeStudentsSheet_(ss, sheetName, seats, nowStr) {", "  var sheet = getOrCreateSheet_(ss, sheetName);", "  sheet.clearContents();", "", "  var rows = [[", "    '座位編號', '排(Row)', '直行(Col)', '學生姓名',", "    '目前可用分', '已吸印數', '累積總分',", "    '精靈名稱', '進化階段', '精靈資料', '最後更新'", "  ]];", "", "  for (var i = 0; i < seats.length; i++) {", "    var s = seats[i] || {};", "    var rowIdx = Math.floor(i / 6) + 1;", "    var colIdx = (i % 6) + 1;", "    var score = Number(s.score) || 0;", "    var stamps = Number(s.stamps) || 0;", "    var totalScore = (s.totalScore !== undefined && s.totalScore !== null) ? Number(s.totalScore) : score;", "    var pokeName = s.name ? (s.pokemonName || '精靈蛋') : '';", "    var pokeStage = s.name ? (s.pokemon && typeof s.pokemon.stage === 'number' ? s.pokemon.stage : 0) : '';", "    var pokeJson = (s.name && s.pokemon) ? JSON.stringify(s.pokemon) : '';", "", "    rows.push([", "      'R' + rowIdx + 'C' + colIdx,", "      rowIdx,", "      colIdx,", "      s.name || '',", "      score,", "      stamps,", "      totalScore,", "      pokeName,", "      pokeStage,", "      pokeJson,", "      nowStr", "    ]);", "  }", "", "  sheet.getRange(1, 1, rows.length, 11).setValues(rows);", "  sheet.getRange(1, 1, 1, 11).setFontWeight('bold').setBackground('#e2e8f0');", "  sheet.setFrozenRows(1);", "}", "", "function writeSeatingVisualSheet_(ss, sheetName, seats, nowStr) {", "  var sheet = getOrCreateSheet_(ss, sheetName);", "  sheet.clear();", "", "  var headers = ['1', '2', '3', '4', '5', '6'];", "  sheet.getRange(1, 1, 1, 6).setValues([headers])", "    .setFontWeight('bold')", "    .setHorizontalAlignment('center')", "    .setBackground('#94a3b8')", "    .setFontColor('#ffffff');", "", "  for (var r = 0; r < 5; r++) {", "    var nameRow = [];", "    var scoreRow = [];", "    for (var c = 0; c < 6; c++) {", "      var idx = r * 6 + c;", "      var s = seats[idx] || {};", "      var score = Number(s.score) || 0;", "      var totalScore = (s.totalScore !== undefined && s.totalScore !== null) ? Number(s.totalScore) : score;", "      var pokeName = s.pokemonName || '精靈蛋';", "      nameRow.push(s.name || '');", "      scoreRow.push(s.name ? ('可用:' + score + ' | 總:' + totalScore + ' | ' + pokeName) : '');", "    }", "    var baseRow = 2 + r * 2;", "    sheet.getRange(baseRow, 1, 1, 6).setValues([nameRow])", "      .setFontWeight('bold')", "      .setHorizontalAlignment('center')", "      .setBackground('#f8fafc');", "    sheet.getRange(baseRow + 1, 1, 1, 6).setValues([scoreRow])", "      .setFontWeight('bold')", "      .setHorizontalAlignment('center')", "      .setFontColor('#15803d')", "      .setBackground('#dcfce7');", "  }", "", "  sheet.getRange(1, 1, 11, 6).setBorder(true, true, true, true, true, true);", "  sheet.getRange(13, 1).setValue('最後更新：' + nowStr).setFontColor('#64748b');", "}", "", "function writeGroupsSheet_(ss, sheetName, groups, nowStr) {", "  var sheet = getOrCreateSheet_(ss, sheetName);", "  sheet.clearContents();", "", "  var rows = [['組別編號', '小組名稱', '總分數', '最後更新']];", "  for (var i = 0; i < groups.length; i++) {", "    var g = groups[i] || {};", "    rows.push([i + 1, g.name || ('第' + (i + 1) + '組'), Number(g.score) || 0, nowStr]);", "  }", "  sheet.getRange(1, 1, rows.length, 4).setValues(rows);", "  sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#e2e8f0');", "  sheet.setFrozenRows(1);", "}", "", "function readSeatsFromSheet_(ss, sheetName) {", "  var sheet = ss.getSheetByName(sheetName);", "  if (!sheet || sheet.getLastRow() < 2) return null;", "  var lastCol = Math.min(11, sheet.getLastColumn());", "  var values = sheet.getRange(2, 1, Math.min(30, sheet.getLastRow() - 1), lastCol).getValues();", "  var seats = [];", "  for (var i = 0; i < 30; i++) {", "    var row = values[i];", "    var score = row ? (Number(row[4]) || 0) : 0;", "    var stamps = (row && lastCol >= 6) ? (Number(row[5]) || 0) : 0;", "    var totalScore = (row && lastCol >= 7) ? (Number(row[6]) || 0) : score;", "    var pokemon = null;", "    if (row && lastCol >= 10 && row[9]) {", "      try {", "        pokemon = JSON.parse(String(row[9]));", "      } catch (e) {", "        pokemon = null;", "      }", "    }", "    seats.push({", "      id: 'seat_' + i,", "      name: row ? String(row[3] || '').trim() : '',", "      score: score,", "      stamps: stamps,", "      totalScore: totalScore,", "      pokemon: pokemon", "    });", "  }", "  return seats;", "}", "", "function readGroupsFromSheet_(ss, sheetName) {", "  var sheet = ss.getSheetByName(sheetName);", "  if (!sheet || sheet.getLastRow() < 2) return null;", "  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();", "  return values.map(function (row, idx) {", "    return {", "      id: 'g' + (idx + 1),", "      name: String(row[1] || ('第' + (idx + 1) + '組')).trim(),", "      score: Number(row[2]) || 0", "    };", "  });", "}", "", "function jsonResponse_(obj) {", "  return ContentService", "    .createTextOutput(JSON.stringify(obj))", "    .setMimeType(ContentService.MimeType.JSON);", "}"].join('\n');
+
+      function createEggPokemon(seedIdx) {
+        const lineIdx = typeof seedIdx === 'number'
+          ? (seedIdx % POKEMON_LINES.length)
+          : Math.floor(Math.random() * POKEMON_LINES.length);
+        return { lineIdx: lineIdx, stage: 0, stepsSinceEvo: 0, collected: [] };
+      }
+
+      function ensurePokemon(seat, idx) {
+        if (!seat.pokemon || typeof seat.pokemon.lineIdx !== 'number') {
+          seat.pokemon = createEggPokemon(idx !== undefined ? idx : Math.floor(Math.random() * 12));
+        }
+        if (!Array.isArray(seat.pokemon.collected)) seat.pokemon.collected = [];
+        return seat.pokemon;
+      }
+
+      function getEggSvg(sizeClass) {
+        return `<svg viewBox="0 0 64 76" class="${sizeClass} drop-shadow-xs" aria-label="精靈蛋">
+          <path d="M32 4C18 4 8 24 8 44c0 17 10.5 28 24 28s24-11 24-28C56 24 46 4 32 4z" fill="#f7f5e1" stroke="#473c33" stroke-width="3.2"/>
+          <ellipse cx="22" cy="24" rx="5" ry="9" transform="rotate(14 22 24)" fill="#ffffff" opacity="0.8"/>
+          <path d="M40 24c4.5-2.5 10.5 2.5 10 10.5-.5 8-6.5 15.5-11.5 14.5-5-1-6.5-8.5-4.5-15.5 1.2-4.2 3.2-7.9 6-9.5z" fill="#9bc565" stroke="#473c33" stroke-width="2.2"/>
+          <path d="M16 48c3.5-2 8.5 1.5 9.5 6.5 1 4.5-2.5 8.5-6.5 8-4.5-.5-7.5-5.5-6.5-10 .5-2.2 1.8-3.6 3.5-4.5z" fill="#9bc565" stroke="#473c33" stroke-width="2.2"/>
+          <circle cx="44" cy="58" r="4.5" fill="#9bc565" stroke="#473c33" stroke-width="2"/>
+          <circle cx="29" cy="14" r="3" fill="#b4d97e"/>
+        </svg>`;
+      }
+
+      function getPokemonSpriteHtml(poke, sizeClass, delaySec) {
+        const delayStyle = typeof delaySec === 'number' ? `style="animation-delay:${delaySec.toFixed(2)}s"` : '';
+        if (!poke || poke.stage === 0) {
+          return `<div class="egg-idle flex items-center justify-center" ${delayStyle}>${getEggSvg(sizeClass)}</div>`;
+        }
+        const line = POKEMON_LINES[poke.lineIdx % POKEMON_LINES.length];
+        const form = line[Math.min(poke.stage - 1, line.length - 1)];
+        const gifUrl = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/' + form.id + '.gif';
+        const pngUrl = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/' + form.id + '.png';
+        return `<img src="${gifUrl}" alt="${escapeHtml(form.name)}" ${delayStyle} class="${sizeClass} poke-idle object-contain drop-shadow-xs select-none pointer-events-none" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${pngUrl}';}else{this.outerHTML='<span class=\\'text-2xl leading-none poke-idle\\'>${form.emoji}</span>';}" />`;
+      }
+
+      function getPokemonForm(poke) {
+        if (!poke || poke.stage === 0) return { name: '精靈蛋', stageLabel: '未孵化', emoji: '🥚' };
+        const line = POKEMON_LINES[poke.lineIdx % POKEMON_LINES.length];
+        const form = line[Math.min(poke.stage - 1, line.length - 1)];
+        const labels = ['初階形態', '一階進化', '最終進化'];
+        return { id: form.id, name: form.name, emoji: form.emoji, stageLabel: labels[Math.min(poke.stage - 1, 2)] };
+      }
+
+      function createDefaultGroups() {
+        return [
+          { id: 'g1', name: '第一組', score: 0 },
+          { id: 'g2', name: '第二組', score: 0 },
+          { id: 'g3', name: '第三組', score: 0 },
+          { id: 'g4', name: '第四組', score: 0 },
+          { id: 'g5', name: '第五組', score: 0 },
+          { id: 'g6', name: '第六組', score: 0 }
+        ];
+      }
+
+      function createEmptySeats() {
+        return Array.from({ length: 30 }, (_, idx) => ({
+          id: 'seat_' + idx,
+          name: '',
+          score: 0,
+          stamps: 0,
+          totalScore: 0,
+          pokemon: createEggPokemon(idx)
+        }));
+      }
+
+      function createClassObj(id, name, presetSeats) {
+        return {
+          id: id,
+          name: name,
+          students: Array.isArray(presetSeats)
+            ? presetSeats.map((s, idx) => ({
+                id: 'seat_' + idx,
+                name: s.name,
+                score: s.score,
+                stamps: 0,
+                totalScore: s.score,
+                pokemon: createEggPokemon(idx)
+              }))
+            : createEmptySeats(),
+          groups: createDefaultGroups(),
+          history: []
+        };
+      }
+
+      function createDefaultState() {
+        return {
+          title: '堂上表現計分板',
+          activeTab: 'students',
+          sortBy: 'order',
+          soundEnabled: true,
+          gasUrl: DEFAULT_GAS_URL,
+          gasAutoSync: true,
+          lastSyncTime: '',
+          activeClassId: 'cls_5c',
+          classes: [
+            createClassObj('cls_5c', '5C', SEATS_5C),
+            createClassObj('cls_6a', '6A', SEATS_6A)
+          ]
+        };
+      }
+
+      let state = loadState();
+      let undoStack = [];
+      let suppressNextClickUntil = 0;
+      let confirmCallback = null;
+      let currentPokeInfoSeatId = null;
+      let editingSeatIdx = -1;
+      let editingClassTabId = null; // null => adding new class
+
+      let globalStampMode = false;
+      let stampModeSeats = new Set();
+
+      let pickerScope = 'students';
+      let pickerInterval = null;
+      let lastPickedItem = null;
+
+      let timerTotalSeconds = 180;
+      let timerRemaining = 180;
+      let timerInterval = null;
+      let timerRunning = false;
+
+      let gasSyncTimeout = null;
+      let gasSyncState = 'idle';
+      let syncedClassesThisSession = new Set();
+      let audioCtx = null;
+
+      function normalizeSeats(seats) {
+        return Array.from({ length: 30 }, (_, idx) => {
+          const s = (seats && seats[idx]) || {};
+          const score = Number(s.score) || 0;
+          const stamps = Number(s.stamps) || 0;
+          const totalScore = (s.totalScore !== undefined && s.totalScore !== null) ? Number(s.totalScore) : score;
+          return {
+            id: s.id || ('seat_' + idx),
+            name: String(s.name || '').trim(),
+            score,
+            stamps,
+            totalScore,
+            pokemon: (s.pokemon && typeof s.pokemon.lineIdx === 'number') ? s.pokemon : createEggPokemon(idx)
+          };
+        });
+      }
+
+      function loadState() {
+        try {
+          const rawV4 = localStorage.getItem(STORAGE_KEY);
+          if (rawV4) {
+            const parsed = JSON.parse(rawV4);
+            if (parsed && Array.isArray(parsed.classes) && parsed.classes.length > 0) {
+              const merged = Object.assign(createDefaultState(), parsed);
+              merged.classes = parsed.classes.map((c, i) => ({
+                id: c.id || ('cls_' + i),
+                name: String(c.name || ('班別 ' + (i + 1))),
+                students: normalizeSeats(c.students),
+                groups: Array.isArray(c.groups) && c.groups.length ? c.groups : createDefaultGroups(),
+                history: Array.isArray(c.history) ? c.history : []
+              }));
+              if (!merged.classes.some((c) => c.id === merged.activeClassId)) {
+                merged.activeClassId = merged.classes[0].id;
+              }
+              if (!merged.gasUrl || merged.gasUrl.includes('/macros/library/')) {
+                merged.gasUrl = DEFAULT_GAS_URL;
+                merged.gasAutoSync = true;
+              }
+              return merged;
+            }
+          }
+
+        } catch (e) {
+          // Ignore storage errors
+        }
+        return createDefaultState();
+      }
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {
+          // Ignore storage errors
+        }
+      }
+
+      function getActiveClass() {
+        return state.classes.find((c) => c.id === state.activeClassId) || state.classes[0];
+      }
+
+      function scheduleAutoSync() {
+        if (!state.gasAutoSync || !state.gasUrl) return;
+        if (gasSyncTimeout) clearTimeout(gasSyncTimeout);
+        gasSyncTimeout = setTimeout(() => { pushToGas(true); }, 1200);
+      }
+
+      async function pushToGas(isSilent, customToast) {
+        if (gasSyncTimeout) { clearTimeout(gasSyncTimeout); gasSyncTimeout = null; }
+        const url = (state.gasUrl || '').trim();
+        if (!url) {
+          if (!isSilent) {
+            openSettingsModal('gas');
+            showToast('請先填入 GAS 網頁應用程式網址');
+          }
+          return;
+        }
+        if (url.includes('/macros/library/')) {
+          if (!isSilent) {
+            openSettingsModal('gas');
+            showToast('目前係程式庫網址，請改用 /macros/s/.../exec 網頁應用程式網址');
+          }
+          return;
+        }
+        if (!url.startsWith('https://')) {
+          showToast('GAS 網址必須以 https:// 開頭');
+          return;
+        }
+
+        const cls = getActiveClass();
+        gasSyncState = 'syncing';
+        renderGasStatus();
+        const feedback = document.getElementById('gasFeedbackMsg');
+        if (feedback) feedback.textContent = '正在儲存「' + cls.name + '」到 Google Sheets...';
+
+        try {
+          const resp = await fetch(url, {
+            method: 'POST',
+            redirect: 'follow',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'save',
+              title: state.title,
+              className: cls.name,
+              seats: cls.students.map((s, idx) => {
+                const poke = ensurePokemon(s, idx);
+                return {
+                  id: s.id,
+                  name: s.name,
+                  score: s.score,
+                  stamps: s.stamps,
+                  totalScore: s.totalScore,
+                  pokemon: poke,
+                  pokemonName: s.name ? getPokemonForm(poke).name : ''
+                };
+              }),
+              groups: cls.groups
+            })
+          });
+          const data = await resp.json();
+          if (data && data.ok) {
+            state.lastSyncTime = data.updatedAt || formatTimeStr(new Date());
+            gasSyncState = 'ok';
+            saveState();
+            renderGasStatus();
+            syncedClassesThisSession.add(cls.id);
+            if (feedback) feedback.textContent = '✅ 已成功儲存「' + cls.name + '」至 Google Sheets（' + state.lastSyncTime + '）';
+            if (customToast) showToast(customToast);
+            else if (!isSilent) showToast('已儲存「' + cls.name + '」總分到 Sheets');
+          } else {
+            throw new Error((data && data.error) || '回傳格式錯誤');
+          }
+        } catch (err) {
+          gasSyncState = 'error';
+          renderGasStatus();
+          if (feedback) feedback.textContent = '❌ 同步失敗：請確認 GAS 已部署為「所有人可存取」的網頁應用程式 (/exec)。';
+          if (!isSilent) showToast('儲存失敗，請檢查 GAS 部署設定');
+        }
+      }
+
+      async function pullFromGas(isSilent) {
+        const url = (state.gasUrl || '').trim();
+        if (!url || !url.startsWith('https://')) {
+          if (!isSilent) showToast('請先填入有效的 https:// GAS 網址');
+          return;
+        }
+        if (url.includes('/macros/library/')) {
+          if (!isSilent) showToast('目前係程式庫網址，請改用網頁應用程式 /exec 網址');
+          return;
+        }
+
+        const cls = getActiveClass();
+        gasSyncState = 'syncing';
+        renderGasStatus();
+        const feedback = document.getElementById('gasFeedbackMsg');
+        if (feedback) feedback.textContent = '正在從 Google Sheets 讀取「' + cls.name + '」...';
+
+        try {
+          const sep = url.includes('?') ? '&' : '?';
+          const reqUrl = url + sep + 'className=' + encodeURIComponent(cls.name) + '&_t=' + Date.now();
+          const resp = await fetch(reqUrl, { method: 'GET', redirect: 'follow', cache: 'no-store' });
+          const data = await resp.json();
+          if (data && data.ok) {
+            let loadedAny = false;
+            if (Array.isArray(data.seats) && data.seats.length === 30) {
+              const hasAnyName = data.seats.some((s) => s && s.name && String(s.name).trim() !== '');
+              if (hasAnyName) {
+                cls.students = normalizeSeats(data.seats);
+                loadedAny = true;
+              }
+            }
+            if (Array.isArray(data.groups) && data.groups.length > 0) {
+              cls.groups = data.groups.map((g, idx) => ({
+                id: g.id || ('g' + (idx + 1)),
+                name: String(g.name || ('第' + (idx + 1) + '組')),
+                score: Number(g.score) || 0
+              }));
+            }
+            syncedClassesThisSession.add(cls.id);
+            state.lastSyncTime = data.loadedAt || formatTimeStr(new Date());
+            gasSyncState = 'ok';
+            saveState();
+            renderAll();
+            renderSeatEditorGrid();
+            if (feedback) feedback.textContent = '✅ 已從 Google Sheets 載入「' + cls.name + '」最新座位與分數（' + state.lastSyncTime + '）';
+            if (!isSilent) showToast('已讀取「' + cls.name + '」最新資料');
+            else if (loadedAny) showToast('已自動同步「' + cls.name + '」雲端座位與分數');
+          } else {
+            throw new Error((data && data.error) || '讀取失敗');
+          }
+        } catch (err) {
+          gasSyncState = 'error';
+          renderGasStatus();
+          if (feedback) feedback.textContent = '❌ 讀取失敗：請確認 GAS 已部署為「所有人可存取」的新版本。';
+          if (!isSilent) showToast('讀取失敗，請檢查 GAS 設定');
+        }
+      }
+
+      function renderGasStatus() {
+        const dot = document.getElementById('gasStatusDot');
+        const text = document.getElementById('gasStatusText');
+        const label = document.getElementById('gasSyncLabel');
+        const warn = document.getElementById('gasLibraryWarning');
+        const isLib = Boolean(state.gasUrl && state.gasUrl.includes('/macros/library/'));
+        if (warn) warn.classList.toggle('hidden', !isLib);
+
+        if (!state.gasUrl) {
+          dot.className = 'w-2 h-2 rounded-full bg-slate-400';
+          text.textContent = '未連接 GAS';
+          label.textContent = '連接 Sheets';
+          return;
+        }
+        if (isLib) {
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+          text.textContent = '需換 /exec 網址';
+          label.textContent = '設定 Sheets';
+          return;
+        }
+        if (gasSyncState === 'syncing') {
+          dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+          text.textContent = '同步中...';
+          label.textContent = '同步中...';
+        } else if (gasSyncState === 'error') {
+          dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+          text.textContent = '同步失敗';
+          label.textContent = '重試儲存';
+        } else if (state.lastSyncTime) {
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+          text.textContent = '已同步 ' + state.lastSyncTime.slice(-8);
+          label.textContent = '儲存到 Sheets';
+        } else {
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+          text.textContent = state.gasAutoSync ? '自動同步已開啟' : '已連接 GAS';
+          label.textContent = '儲存到 Sheets';
+        }
+      }
+
+      function playTone(type) {
+        if (!state.soundEnabled) return;
+        try {
+          if (!audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            audioCtx = new Ctx();
+          }
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          if (type === 'plus') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.12);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+            osc.start(now);
+            osc.stop(now + 0.23);
+          } else if (type === 'minus') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.exponentialRampToValueAtTime(195, now + 0.16);
+            gain.gain.setValueAtTime(0.14, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            osc.start(now);
+            osc.stop(now + 0.21);
+          } else if (type === 'stamp') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(330, now + 0.1);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            osc.start(now);
+            osc.stop(now + 0.15);
+          } else if (type === 'zap') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(760, now);
+            osc.frequency.exponentialRampToValueAtTime(220, now + 0.11);
+            gain.gain.setValueAtTime(0.11, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+            osc.start(now);
+            osc.stop(now + 0.13);
+          } else if (type === 'ko') {
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(240, now);
+            osc.frequency.exponentialRampToValueAtTime(65, now + 0.28);
+            gain.gain.setValueAtTime(0.16, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.31);
+          } else if (type === 'tick') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(640, now);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.start(now);
+            osc.stop(now + 0.06);
+          } else if (type === 'fanfare') {
+            [523.25, 659.25, 783.99, 1046.5].forEach((freq, idx) => {
+              const o = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              o.type = 'triangle';
+              o.connect(g);
+              g.connect(audioCtx.destination);
+              o.frequency.setValueAtTime(freq, now + idx * 0.09);
+              g.gain.setValueAtTime(0.14, now + idx * 0.09);
+              g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.32);
+              o.start(now + idx * 0.09);
+              o.stop(now + idx * 0.09 + 0.34);
+            });
+          }
+        } catch (e) {}
+      }
+
+      function showToast(msg) {
+        const container = document.getElementById('toastContainer');
+        const el = document.createElement('div');
+        el.className = 'px-4 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold shadow-lg transition-all duration-300';
+        el.textContent = msg;
+        container.appendChild(el);
+        setTimeout(() => {
+          el.classList.add('opacity-0', 'translate-y-2');
+          setTimeout(() => el.remove(), 300);
+        }, 2000);
+      }
+
+      function fireConfetti() {
+        if (typeof window.confetti === 'function') {
+          window.confetti({ particleCount: 60, spread: 65, origin: { y: 0.65 } });
+        }
+      }
+
+      function formatTimeStr(date) {
+        return [date.getHours(), date.getMinutes(), date.getSeconds()]
+          .map((n) => String(n).padStart(2, '0')).join(':');
+      }
+
+      function getListByType(type) {
+        const cls = getActiveClass();
+        return type === 'group' ? cls.groups : cls.students;
+      }
+
+      function getActiveStudents() {
+        return getActiveClass().students.filter((s) => s.name && s.name.trim() !== '');
+      }
+
+      function isSeatInStampMode(seatId) {
+        return globalStampMode || stampModeSeats.has(seatId);
+      }
+
+      function animateCardBadge(cardId, text, colorClass) {
+        const card = document.querySelector('[data-card-id="' + cardId + '"]');
+        if (!card) return;
+        card.classList.remove('bump');
+        void card.offsetWidth;
+        card.classList.add('bump');
+
+        const badge = document.createElement('span');
+        badge.className = 'score-float ' + colorClass;
+        badge.textContent = text;
+        card.appendChild(badge);
+        setTimeout(() => badge.remove(), 900);
+      }
+
+      function tryPokemonProgress(student, delta) {
+        if (!(Number(delta) > 0)) return;
+        const poke = ensurePokemon(student);
+        const pokeEl = document.querySelector('[data-poke-visual="' + student.id + '"]');
+        if (pokeEl) {
+          pokeEl.classList.remove('poke-wobble');
+          void pokeEl.offsetWidth;
+          pokeEl.classList.add('poke-wobble');
+        }
+        if (poke.stage >= 3) return;
+
+        poke.stepsSinceEvo = (poke.stepsSinceEvo || 0) + 1;
+        const rules = [
+          { chance: 0.28, maxSteps: 5 },
+          { chance: 0.22, maxSteps: 7 },
+          { chance: 0.18, maxSteps: 9 }
+        ];
+        const rule = rules[poke.stage];
+        if ((poke.stepsSinceEvo >= rule.maxSteps) || (Math.random() < rule.chance)) {
+          const prevForm = getPokemonForm(poke);
+          poke.stage += 1;
+          poke.stepsSinceEvo = 0;
+          const newForm = getPokemonForm(poke);
+          const isHatch = poke.stage === 1;
+          const cls = getActiveClass();
+
+          cls.history.unshift({
+            id: 'h_' + Date.now() + '_evo',
+            time: formatTimeStr(new Date()),
+            type: 'student',
+            targetId: student.id,
+            targetName: student.name,
+            delta: 0,
+            isStamp: false,
+            reason: isHatch ? ('🥚 孵化成 ' + newForm.name) : ('✨ ' + prevForm.name + ' 進化成 ' + newForm.name),
+            newScore: student.score,
+            totalAfter: student.totalScore
+          });
+          if (cls.history.length > 200) cls.history.pop();
+
+          saveState();
+          renderAll();
+          playTone('fanfare');
+          const newPokeEl = document.querySelector('[data-poke-visual="' + student.id + '"]');
+          if (newPokeEl) {
+            newPokeEl.classList.remove('evo-pop');
+            void newPokeEl.offsetWidth;
+            newPokeEl.classList.add('evo-pop');
+          }
+        } else {
+          saveState();
+        }
+      }
+
+      function updateScore(type, id, delta, customLabel) {
+        const cls = getActiveClass();
+        const list = getListByType(type);
+        const item = list.find((x) => x.id === id);
+        if (!item || (type === 'student' && !item.name)) return;
+
+        const inStampMode = (type === 'student') && isSeatInStampMode(id);
+        const affectTotal = (type === 'student') && !inStampMode;
+
+        item.score += delta;
+        if (affectTotal) {
+          item.totalScore = (Number(item.totalScore) || 0) + delta;
+        }
+
+        const reason = customLabel || (inStampMode
+          ? (delta < 0 ? '💮 吸印扣分 (不扣總分)' : '💮 吸印微調 (不改總分)')
+          : (delta > 0 ? '加分' : '扣分'));
+
+        const logEntry = {
+          id: 'h_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          time: formatTimeStr(new Date()),
+          type: type,
+          targetId: id,
+          targetName: item.name,
+          delta: delta,
+          isStamp: inStampMode,
+          reason: reason,
+          newScore: item.score,
+          totalAfter: type === 'student' ? item.totalScore : null
+        };
+
+        cls.history.unshift(logEntry);
+        if (cls.history.length > 200) cls.history.pop();
+
+        undoStack.push({ kind: 'single', classId: cls.id, type, id, delta, affectTotal, historyId: logEntry.id });
+        if (undoStack.length > 40) undoStack.shift();
+
+        playTone(inStampMode ? 'stamp' : (delta > 0 ? 'plus' : 'minus'));
+        saveState();
+        renderAll();
+
+        if (inStampMode) {
+          animateCardBadge(id, (delta > 0 ? '+' : '') + delta + ' (不扣總分)', 'text-amber-700');
+        } else {
+          animateCardBadge(id, (delta > 0 ? '+' : '') + delta, delta > 0 ? 'text-emerald-600' : 'text-rose-600');
+          if (type === 'student' && !inStampMode && Number(delta) > 0) {
+            tryPokemonProgress(item, Number(delta));
+          }
+        }
+        scheduleAutoSync();
+      }
+
+      function toggleSeatStampMode(seatId) {
+        if (globalStampMode) {
+          globalStampMode = false;
+          stampModeSeats.clear();
+          renderAll();
+          showToast('已結束全體吸印模式');
+          return;
+        }
+        if (stampModeSeats.has(seatId)) {
+          stampModeSeats.delete(seatId);
+        } else {
+          stampModeSeats.add(seatId);
+          playTone('tick');
+        }
+        renderAll();
+      }
+
+      function awardAll(delta) {
+        const cls = getActiveClass();
+        const type = state.activeTab === 'students' ? 'student' : 'group';
+        const list = type === 'student' ? getActiveStudents() : cls.groups;
+        if (list.length === 0) return;
+
+        const batchLog = {
+          id: 'h_' + Date.now() + '_all',
+          time: formatTimeStr(new Date()),
+          type: type,
+          targetId: 'ALL',
+          targetName: type === 'group' ? '所有小組' : ('全班 ' + cls.name),
+          delta: delta,
+          reason: '全體獎勵',
+          newScore: null,
+          totalAfter: null
+        };
+
+        list.forEach((item) => {
+          item.score += delta;
+          if (type === 'student') item.totalScore = (Number(item.totalScore) || 0) + delta;
+        });
+
+        cls.history.unshift(batchLog);
+        if (cls.history.length > 200) cls.history.pop();
+
+        undoStack.push({ kind: 'all', classId: cls.id, type, delta, historyId: batchLog.id });
+        if (undoStack.length > 40) undoStack.shift();
+
+        playTone('fanfare');
+        fireConfetti();
+        saveState();
+        renderAll();
+        scheduleAutoSync();
+        showToast((type === 'group' ? '所有小組' : cls.name + ' 全班') + ' +' + delta + ' 分！');
+      }
+
+      function performUndo() {
+        if (undoStack.length === 0) return;
+        const last = undoStack.pop();
+        const cls = state.classes.find((c) => c.id === last.classId) || getActiveClass();
+
+        if (last.kind === 'single') {
+          const list = last.type === 'group' ? cls.groups : cls.students;
+          const item = list.find((x) => x.id === last.id);
+          if (item) {
+            item.score -= last.delta;
+            if (last.affectTotal) item.totalScore -= last.delta;
+          }
+        } else if (last.kind === 'swap') {
+          const tmp = cls.students[last.fromIdx];
+          cls.students[last.fromIdx] = cls.students[last.toIdx];
+          cls.students[last.toIdx] = tmp;
+        } else if (last.kind === 'all') {
+          const list = last.type === 'student' ? cls.students.filter((s) => s.name) : cls.groups;
+          list.forEach((item) => {
+            item.score -= last.delta;
+            if (last.type === 'student') item.totalScore -= last.delta;
+          });
+        }
+
+        if (last.historyId) {
+          cls.history = cls.history.filter((h) => h.id !== last.historyId);
+        }
+        saveState();
+        renderAll();
+        scheduleAutoSync();
+        showToast('已撤銷上一步操作');
+      }
+
+      function openConfirm(title, message, onOk) {
+        document.getElementById('confirmTitle').textContent = title;
+        document.getElementById('confirmMessage').textContent = message;
+        confirmCallback = onOk;
+        document.getElementById('confirmModal').classList.remove('hidden');
+      }
+
+      function closeModal(modalId) {
+        const el = document.getElementById(modalId);
+        if (el) el.classList.add('hidden');
+      }
+
+      function openEditNameModal(seatIdx) {
+        const cls = getActiveClass();
+        const seat = cls.students[seatIdx];
+        if (!seat) return;
+        editingSeatIdx = seatIdx;
+        document.getElementById('editNameModalTitle').textContent = seat.name ? '更改學生姓名' : '新增學生到此空位';
+        const inp = document.getElementById('editNameInput');
+        inp.value = seat.name || '';
+        document.getElementById('editNameModal').classList.remove('hidden');
+        setTimeout(() => { inp.focus(); inp.select(); }, 30);
+      }
+
+      function saveEditedSeatName(forcedEmpty) {
+        if (editingSeatIdx < 0) return;
+        const cls = getActiveClass();
+        const seat = cls.students[editingSeatIdx];
+        if (!seat) return;
+        const newName = forcedEmpty ? '' : document.getElementById('editNameInput').value.trim();
+        seat.name = newName;
+        if (!newName) {
+          seat.score = 0;
+          seat.stamps = 0;
+          seat.totalScore = 0;
+          stampModeSeats.delete(seat.id);
+        } else {
+          ensurePokemon(seat, editingSeatIdx);
+        }
+        editingSeatIdx = -1;
+        saveState();
+        renderAll();
+        closeModal('editNameModal');
+        scheduleAutoSync();
+        showToast(newName ? ('已更新為「' + newName + '」') : '已設為空位');
+      }
+
+      function openClassTabModal(classId) {
+        editingClassTabId = classId || null;
+        const isEdit = Boolean(classId);
+        const cls = isEdit ? state.classes.find((c) => c.id === classId) : null;
+        document.getElementById('classTabModalTitle').textContent = isEdit ? '編輯班別分頁' : '新增班別分頁';
+        const inp = document.getElementById('classTabNameInput');
+        inp.value = cls ? cls.name : '';
+        document.getElementById('deleteClassTabBtn').classList.toggle('hidden', !isEdit || state.classes.length <= 1);
+        document.getElementById('classTabModal').classList.remove('hidden');
+        setTimeout(() => { inp.focus(); inp.select(); }, 30);
+      }
+
+      function saveClassTabModal() {
+        const name = document.getElementById('classTabNameInput').value.trim();
+        if (!name) {
+          showToast('請輸入班別名稱');
+          return;
+        }
+        if (editingClassTabId) {
+          const cls = state.classes.find((c) => c.id === editingClassTabId);
+          if (cls) cls.name = name;
+          showToast('已改名為「' + name + '」');
+        } else {
+          const newId = 'cls_' + Date.now();
+          state.classes.push(createClassObj(newId, name, false));
+          state.activeClassId = newId;
+          globalStampMode = false;
+          stampModeSeats.clear();
+          showToast('已新增班別「' + name + '」');
+        }
+        saveState();
+        renderAll();
+        closeModal('classTabModal');
+      }
+
+      function openPokeInfoModal(seatId) {
+        const cls = getActiveClass();
+        const student = cls.students.find((s) => s.id === seatId);
+        if (!student || !student.name) return;
+        const poke = ensurePokemon(student);
+        const form = getPokemonForm(poke);
+        currentPokeInfoSeatId = seatId;
+
+        document.getElementById('pokeInfoTitle').textContent = student.name + ' 的精靈夥伴';
+        document.getElementById('pokeInfoVisual').innerHTML = getPokemonSpriteHtml(poke, 'w-24 h-24');
+        document.getElementById('pokeInfoName').textContent = form.name;
+        document.getElementById('pokeInfoStage').textContent =
+          poke.stage === 0
+            ? '階段：精靈蛋 · 每次加分都有機會孵化！'
+            : (poke.stage === 3
+              ? '階段：最終進化 · 好犀利！可以領取新精靈蛋'
+              : '階段：' + form.stageLabel + ' · 繼續加分有機會再進化！');
+
+        const colSection = document.getElementById('pokeCollectedSection');
+        const colList = document.getElementById('pokeCollectedList');
+        if (poke.collected && poke.collected.length > 0) {
+          colSection.classList.remove('hidden');
+          colList.innerHTML = poke.collected.map((c) =>
+            `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-amber-200 text-xs font-bold text-amber-900">${escapeHtml(c.emoji || '⭐')} ${escapeHtml(c.name)}</span>`
+          ).join('');
+        } else {
+          colSection.classList.add('hidden');
+        }
+
+        document.getElementById('pokeNewEggRow').classList.toggle('hidden', poke.stage < 3);
+        document.getElementById('pokeInfoModal').classList.remove('hidden');
+      }
+
+      function getTopValue(items, key) {
+        if (!items.length) return null;
+        const max = Math.max(...items.map((x) => Number(x[key]) || 0));
+        return max > 0 ? max : null;
+      }
+
+      function computeRankMap(items, key) {
+        const sorted = [...items].sort((a, b) => (Number(b[key]) || 0) - (Number(a[key]) || 0));
+        const map = {};
+        let currentRank = 1;
+        sorted.forEach((item, idx) => {
+          if (idx > 0 && (Number(item[key]) || 0) < (Number(sorted[idx - 1][key]) || 0)) {
+            currentRank = idx + 1;
+          }
+          map[item.id] = currentRank;
+        });
+        return map;
+      }
+
+      function renderClassTabs() {
+        const container = document.getElementById('classTabsList');
+        container.innerHTML = state.classes.map((cls) => {
+          const active = cls.id === state.activeClassId;
+          const count = cls.students.filter((s) => s.name).length;
+          return `
+            <div class="inline-flex items-center rounded-lg border ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'} transition-all shrink-0">
+              <button type="button" data-switch-class="${cls.id}" class="px-3 py-1 text-xs font-extrabold flex items-center gap-1.5">
+                <span>${escapeHtml(cls.name)}</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}">${count}</span>
+              </button>
+              ${active ? `<button type="button" data-edit-class="${cls.id}" title="修改或刪除此班別" class="pr-2 pl-0.5 py-1 text-indigo-100 hover:text-white"><i data-lucide="pencil" class="w-3 h-3"></i></button>` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderHeader() {
+        const cls = getActiveClass();
+        document.getElementById('classTitleDisplay').textContent = state.title;
+
+        const isStudents = state.activeTab === 'students';
+        if (isStudents) {
+          const active = getActiveStudents();
+          const totalSum = active.reduce((s, x) => s + (Number(x.totalScore) || 0), 0);
+          document.getElementById('subtitleStats').textContent =
+            cls.name + ' · ' + active.length + ' 位學生 · 總分 ' + totalSum + ' · 按名改名 / 拉空白位調位';
+        } else {
+          const total = cls.groups.reduce((sum, x) => sum + x.score, 0);
+          const modeLabel = state.activeTab === 'history' ? '計分紀錄' : '小組模式';
+          document.getElementById('subtitleStats').textContent =
+            cls.name + ' · ' + modeLabel + ' · 共 ' + cls.groups.length + ' 組 · 累積 ' + total + ' 分';
+        }
+
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+          const active = btn.dataset.tab === state.activeTab;
+          btn.className = 'tab-btn px-3 py-1 rounded-lg text-xs sm:text-sm font-semibold transition-all ' +
+            (active ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900');
+        });
+        document.querySelectorAll('.tab-btn-mobile').forEach((btn) => {
+          const active = btn.dataset.tab === state.activeTab;
+          btn.className = 'tab-btn-mobile py-1 rounded-lg text-xs font-semibold transition-all ' +
+            (active ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600');
+        });
+
+        const globalStampBtn = document.getElementById('globalStampModeBtn');
+        const globalStampLabel = document.getElementById('globalStampModeLabel');
+        globalStampBtn.classList.toggle('hidden', !isStudents);
+        document.getElementById('battleRoyaleBtn').classList.toggle('hidden', !isStudents);
+        document.getElementById('resetEggsBtn').classList.toggle('hidden', !isStudents);
+        if (globalStampMode) {
+          globalStampBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border border-yellow-500 shadow-xs transition-colors';
+          globalStampLabel.textContent = '吸印中(結束)';
+        } else {
+          globalStampBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border border-yellow-300 transition-colors';
+          globalStampLabel.textContent = '全體吸印';
+        }
+
+
+
+        document.getElementById('undoBtn').disabled = undoStack.length === 0;
+
+        const soundBtn = document.getElementById('soundToggleBtn');
+        soundBtn.innerHTML = state.soundEnabled
+          ? '<i data-lucide="volume-2" class="w-4 h-4 text-indigo-600"></i>'
+          : '<i data-lucide="volume-x" class="w-4 h-4 text-slate-400"></i>';
+
+        renderClassTabs();
+        renderGasStatus();
+      }
+
+      function renderSeatingChart() {
+        const cls = getActiveClass();
+        const grid = document.getElementById('seatingGrid');
+        const activeStudents = getActiveStudents();
+        const topTotal = getTopValue(activeStudents, 'totalScore');
+        const rankMap = computeRankMap(activeStudents, 'totalScore');
+        const showRanks = state.sortBy === 'rank';
+
+        grid.innerHTML = cls.students.map((seat, idx) => {
+          if (!seat.name || seat.name.trim() === '') {
+            return `
+              <div data-seat-idx="${idx}" class="h-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 flex flex-col items-center justify-center text-slate-400 select-none transition-all hover:border-indigo-300 hover:bg-indigo-50/30">
+                <button type="button" data-action="edit-name" data-seat-idx="${idx}" class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-indigo-600 hover:bg-white transition-colors cursor-pointer">
+                  + 空位
+                </button>
+              </div>
+            `;
+          }
+
+          const inStamp = isSeatInStampMode(seat.id);
+          const isLeader = topTotal !== null && seat.totalScore === topTotal;
+          const filledBlocks = Math.max(0, Math.min(10, seat.score));
+          const rankNum = rankMap[seat.id];
+
+          let cellsHtml = '';
+          for (let i = 0; i < 10; i++) {
+            const filled = i < filledBlocks;
+            const cellDelta = filled ? -1 : 1;
+            const fillClass = filled
+              ? (inStamp ? 'bg-yellow-400 hover:bg-yellow-500 border-yellow-500/70' : 'bg-[#86bc6c] hover:bg-[#74ac5a] border-[#6ca352]/50')
+              : (inStamp ? 'bg-yellow-50/90 hover:bg-yellow-200/70 border-yellow-300/80' : 'bg-white hover:bg-emerald-100 border-slate-200');
+            const cellTitle = filled
+              ? (inStamp ? '點擊黃格 -1（不扣總分）' : '點擊綠色格 -1')
+              : (inStamp ? '點擊空格 +1（不改總分）' : '點擊空格 +1');
+            cellsHtml += `<button type="button" data-action="cell-tap" data-id="${seat.id}" data-delta="${cellDelta}" title="${cellTitle}" class="h-full min-h-[14px] rounded-[3px] border ${fillClass} cursor-pointer active:scale-90 transition-all"></button>`;
+          }
+
+          const cardTheme = inStamp
+            ? 'bg-yellow-100 border-yellow-400 shadow-md ring-2 ring-yellow-300'
+            : (isLeader ? 'bg-white border-indigo-300 shadow-sm' : 'bg-white border-slate-300/90 shadow-xs');
+
+          const poke = ensurePokemon(seat, idx);
+          const pokeForm = getPokemonForm(poke);
+          const idleDelay = (idx % 7) * 0.35;
+
+          return `
+            <div data-card-id="${seat.id}" data-seat-idx="${idx}" title="按住空白位置可拖曳調位" class="relative h-full rounded-xl border-2 ${cardTheme} px-2 py-1.5 flex flex-col justify-between gap-1 transition-all hover:shadow-md select-none overflow-hidden cursor-grab active:cursor-grabbing touch-none">
+              <div class="flex items-center justify-between gap-1 shrink-0">
+                <div>
+                  <div class="flex items-center gap-0.5 whitespace-nowrap">
+                    <button type="button" data-action="edit-name" data-seat-idx="${idx}" title="點擊更改學生姓名" class="text-sm font-extrabold text-slate-900 hover:text-indigo-600 hover:underline underline-offset-2 whitespace-nowrap cursor-pointer text-left">${escapeHtml(seat.name)}</button>
+                    ${isLeader && !inStamp ? '<span class="text-[11px] shrink-0" title="累積總分領先">👑</span>' : ''}
+                  </div>
+                  <div class="flex items-baseline gap-1 mt-0.5">
+                    <span class="text-xl sm:text-2xl font-black leading-none tracking-tight ${inStamp ? 'text-yellow-950' : 'text-slate-700'}" title="累積總分（吸印不會扣除）">${seat.totalScore}</span>
+                    ${showRanks && seat.totalScore > 0 ? `<span class="text-[10px] font-extrabold px-1 rounded bg-indigo-50 text-indigo-700">#${rankNum}</span>` : ''}
+                    ${inStamp ? '<span class="text-[10px] font-extrabold text-yellow-900 bg-yellow-300/80 px-1 rounded">吸印中</span>' : ''}
+                  </div>
+                </div>
+
+                <button type="button" data-action="poke-info" data-id="${seat.id}" data-poke-visual="${seat.id}" title="${escapeHtml(pokeForm.name)}（點擊查看精靈）" class="w-10 h-10 sm:w-11 sm:h-11 shrink-0 rounded-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer">
+                  ${getPokemonSpriteHtml(poke, 'w-9 h-9 sm:w-10 sm:h-10', idleDelay)}
+                </button>
+              </div>
+
+              <div class="flex-1 min-h-[34px] p-1 rounded-lg border grid grid-cols-5 grid-rows-2 gap-1 ${inStamp ? 'bg-yellow-50/70 border-yellow-300' : 'bg-slate-50 border-slate-200/80'}">
+                ${cellsHtml}
+              </div>
+
+              <div class="grid grid-cols-3 gap-1 shrink-0">
+                <button type="button" data-action="score" data-type="student" data-id="${seat.id}" data-delta="-1" class="py-0.5 rounded-md font-bold text-[11px] active:scale-95 transition-all cursor-pointer ${inStamp ? 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-xs' : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70'}">-1</button>
+                <button type="button" data-action="score" data-type="student" data-id="${seat.id}" data-delta="1" class="py-0.5 rounded-md font-bold text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all cursor-pointer">+1</button>
+                <button type="button" data-action="toggle-stamp" data-id="${seat.id}" class="py-0.5 rounded-md font-bold text-[11px] active:scale-95 transition-all cursor-pointer ${inStamp ? 'bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border border-yellow-600/40' : 'bg-yellow-50 hover:bg-yellow-100 text-yellow-800 border border-yellow-300/80'}">${inStamp ? '完成' : '吸印'}</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderGroups() {
+        const cls = getActiveClass();
+        const container = document.getElementById('groupsView');
+        const topScore = getTopValue(cls.groups, 'score');
+        const maxBar = Math.max(10, ...cls.groups.map((g) => Math.max(0, g.score)));
+        const sorted = cls.groups.map((item, index) => ({ item, index }));
+        if (state.sortBy === 'rank') {
+          sorted.sort((a, b) => b.item.score - a.item.score || a.index - b.index);
+        }
+
+        container.innerHTML = sorted.map(({ item, index }) => {
+          const theme = GROUP_THEMES[index % GROUP_THEMES.length];
+          const isLeader = topScore !== null && item.score === topScore;
+          const pct = Math.max(0, Math.min(100, Math.round((Math.max(0, item.score) / maxBar) * 100)));
+
+          return `
+            <div data-card-id="${item.id}" class="relative bg-white rounded-2xl border-2 ${isLeader ? 'border-amber-400 shadow-md' : 'border-slate-200 shadow-sm'} p-5 flex flex-col justify-between transition-all hover:shadow-md">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                  <span class="w-8 h-8 rounded-xl ${theme.badge} text-white text-sm font-extrabold flex items-center justify-center shrink-0">${index + 1}</span>
+                  <h2 class="text-lg font-extrabold text-slate-900 truncate">${escapeHtml(item.name)}</h2>
+                </div>
+                ${isLeader ? '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 shrink-0">👑 領先</span>' : ''}
+              </div>
+
+              <button type="button" data-action="score" data-type="group" data-id="${item.id}" data-delta="1" class="my-5 py-3 rounded-2xl ${theme.bg} border ${theme.border} flex flex-col items-center justify-center group hover:brightness-95 transition-all cursor-pointer">
+                <span class="text-5xl sm:text-6xl font-black tracking-tight ${theme.text}">${item.score}</span>
+                <span class="text-xs font-semibold text-slate-500 mt-1 group-hover:text-slate-700">點擊直接 +1</span>
+              </button>
+
+              <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden mb-4">
+                <div class="h-full ${theme.bar} rounded-full transition-all duration-300" style="width: ${pct}%"></div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2">
+                <button type="button" data-action="score" data-type="group" data-id="${item.id}" data-delta="-1" class="py-2.5 rounded-xl font-bold text-sm bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 active:scale-95 transition-all">-1</button>
+                <button type="button" data-action="score" data-type="group" data-id="${item.id}" data-delta="1" class="py-2.5 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95 transition-all">+1</button>
+                <button type="button" data-action="score" data-type="group" data-id="${item.id}" data-delta="2" class="py-2.5 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm active:scale-95 transition-all">+2</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderHistory() {
+        const cls = getActiveClass();
+        document.getElementById('historyTitleHeading').textContent = cls.name + ' 課堂計分與吸印紀錄';
+        const listEl = document.getElementById('historyList');
+        if (cls.history.length === 0) {
+          listEl.innerHTML = '<div class="py-12 text-center text-sm text-slate-400">暫時未有計分或吸印紀錄。操作後會自動記錄喺呢度。</div>';
+          return;
+        }
+        listEl.innerHTML = cls.history.map((h) => {
+          const isStamp = Boolean(h.isStamp);
+          const isPos = h.delta > 0;
+          const badgeClass = isStamp
+            ? 'bg-yellow-100 text-yellow-900 border-yellow-300'
+            : (isPos ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200');
+          const rightInfo = h.totalAfter !== null && h.totalAfter !== undefined
+            ? '餘 ' + h.newScore + ' / 總 ' + h.totalAfter
+            : (h.newScore !== null ? '共 ' + h.newScore + ' 分' : '全體');
+
+          return `
+            <div class="py-3 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <span class="font-mono text-xs text-slate-400 shrink-0">${escapeHtml(h.time)}</span>
+                <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-600 shrink-0">${h.type === 'group' ? '小組' : '個人'}</span>
+                <span class="text-sm font-bold text-slate-900 truncate">${escapeHtml(h.targetName)}</span>
+                <span class="text-xs text-slate-500 truncate">${escapeHtml(h.reason)}</span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold border ${badgeClass}">${isStamp ? '吸印 ' + (isPos ? '+' : '') + h.delta : (isPos ? '+' : '') + h.delta}</span>
+                <span class="text-xs text-slate-500 min-w-[76px] text-right font-medium">${rightInfo}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderViewsVisibility() {
+        document.getElementById('boardControls').classList.toggle('hidden', state.activeTab === 'history');
+        document.getElementById('studentsView').classList.toggle('hidden', state.activeTab !== 'students');
+        document.getElementById('groupsView').classList.toggle('hidden', state.activeTab !== 'groups');
+        document.getElementById('historyView').classList.toggle('hidden', state.activeTab !== 'history');
+      }
+
+      function renderAll() {
+        renderHeader();
+        renderViewsVisibility();
+        if (state.activeTab === 'students') renderSeatingChart();
+        if (state.activeTab === 'groups') renderGroups();
+        if (state.activeTab === 'history') renderHistory();
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function renderSeatEditorGrid() {
+        const cls = getActiveClass();
+        document.getElementById('seatEditorLabel').textContent = '「' + cls.name + '」5×6 座位表姓名設定（留空代表空位）';
+        const container = document.getElementById('seatEditorGrid');
+        container.innerHTML = cls.students.map((s, idx) => `
+          <input type="text" data-seat-index="${idx}" value="${escapeHtml(s.name)}" placeholder="空位" class="px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        `).join('');
+      }
+
+      function openSettingsModal(initialTab) {
+        const cls = getActiveClass();
+        renderSeatEditorGrid();
+        document.getElementById('groupNamesInput').value = cls.groups.map((g) => g.name).join('\n');
+        document.getElementById('classTitleInput').value = state.title;
+        document.getElementById('gasUrlInput').value = state.gasUrl || '';
+        document.getElementById('gasAutoSyncCheckbox').checked = Boolean(state.gasAutoSync);
+        document.getElementById('gasCodePreview').value = GAS_CODE_TEMPLATE;
+        renderGasStatus();
+        switchSettingsTab(initialTab || 'roster');
+        document.getElementById('settingsModal').classList.remove('hidden');
+        if (window.lucide) window.lucide.createIcons();
+      }
+
+      function switchSettingsTab(tabName) {
+        document.querySelectorAll('.settings-tab-btn').forEach((btn) => {
+          const active = btn.dataset.settingsTab === tabName;
+          btn.className = 'settings-tab-btn pb-2.5 text-sm font-bold border-b-2 ' +
+            (active ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800');
+        });
+        document.getElementById('settingsRosterPane').classList.toggle('hidden', tabName !== 'roster');
+        document.getElementById('settingsGasPane').classList.toggle('hidden', tabName !== 'gas');
+        document.getElementById('settingsDataPane').classList.toggle('hidden', tabName !== 'data');
+      }
+
+      function copyTextToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(() => {
+            showToast('已複製 Code.gs 程式碼');
+          }).catch(() => fallbackCopy());
+        } else {
+          fallbackCopy();
+        }
+      }
+
+      function fallbackCopy() {
+        const ta = document.getElementById('gasCodePreview');
+        if (ta) {
+          ta.focus();
+          ta.select();
+          try {
+            document.execCommand('copy');
+            showToast('已複製 Code.gs 程式碼');
+          } catch (e) {
+            showToast('請手動全選複製程式碼');
+          }
+        }
+      }
+
+      function exportCsv() {
+        const cls = getActiveClass();
+        const lines = [];
+        lines.push('班別,類型,座位編號,名稱,目前可用分,累積總分');
+        cls.students.forEach((s, idx) => {
+          if (!s.name) return;
+          const r = Math.floor(idx / 6) + 1;
+          const c = (idx % 6) + 1;
+          lines.push('"' + cls.name + '",個人,R' + r + 'C' + c + ',"' + s.name.replace(/"/g, '""') + '",' + s.score + ',' + s.totalScore);
+        });
+        cls.groups.forEach((g, idx) => {
+          lines.push('"' + cls.name + '",小組,G' + (idx + 1) + ',"' + g.name.replace(/"/g, '""') + '",' + g.score + ',' + g.score);
+        });
+        lines.push('');
+        lines.push('時間,類型,對象,操作,分數變動,剩餘可用分,當時累積總分');
+        cls.history.forEach((h) => {
+          lines.push([
+            h.time,
+            h.type === 'group' ? '小組' : '個人',
+            '"' + h.targetName.replace(/"/g, '""') + '"',
+            '"' + h.reason.replace(/"/g, '""') + '"',
+            h.delta,
+            h.newScore !== null ? h.newScore : '',
+            h.totalAfter !== null && h.totalAfter !== undefined ? h.totalAfter : ''
+          ].join(','));
+        });
+
+        const bom = '\uFEFF';
+        const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (cls.name || 'class') + '_' + (state.title || 'scoreboard') + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast('已匯出「' + cls.name + '」CSV 成績檔');
+      }
+
+      // Timer Helpers
+      function formatMMSS(sec) {
+        return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+      }
+
+      function renderTimerUI() {
+        const txt = formatMMSS(timerRemaining);
+        document.getElementById('timerDisplay').textContent = txt;
+        document.getElementById('floatingTimerDisplay').textContent = txt;
+        document.getElementById('headerTimerLabel').textContent = timerRunning ? txt : '計時器';
+
+        const pct = timerTotalSeconds > 0 ? Math.round((timerRemaining / timerTotalSeconds) * 100) : 0;
+        const bar = document.getElementById('timerProgressBar');
+        bar.style.width = pct + '%';
+        bar.className = 'h-full transition-all duration-300 ' + (timerRemaining <= 10 && timerRemaining > 0 ? 'bg-rose-500' : 'bg-indigo-600');
+
+        const startBtn = document.getElementById('timerStartPauseBtn');
+        startBtn.textContent = timerRunning ? '暫停' : (timerRemaining < timerTotalSeconds && timerRemaining > 0 ? '繼續' : '開始倒數');
+
+        const modalHidden = document.getElementById('timerModal').classList.contains('hidden');
+        document.getElementById('floatingTimer').classList.toggle('hidden', !(timerRunning && modalHidden));
+      }
+
+      function stopTimerInterval() {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        timerRunning = false;
+      }
+
+      function setTimerDuration(sec) {
+        stopTimerInterval();
+        timerTotalSeconds = Math.max(1, sec);
+        timerRemaining = timerTotalSeconds;
+        document.getElementById('customMinutesInput').value = Math.floor(timerTotalSeconds / 60);
+        document.getElementById('customSecondsInput').value = timerTotalSeconds % 60;
+        renderTimerUI();
+      }
+
+      function toggleTimer() {
+        if (timerRunning) {
+          stopTimerInterval();
+          renderTimerUI();
+          return;
+        }
+        if (timerRemaining <= 0) timerRemaining = timerTotalSeconds;
+        timerRunning = true;
+        renderTimerUI();
+        timerInterval = setInterval(() => {
+          timerRemaining -= 1;
+          if (timerRemaining <= 3 && timerRemaining > 0) playTone('tick');
+          if (timerRemaining <= 0) {
+            timerRemaining = 0;
+            stopTimerInterval();
+            playTone('fanfare');
+            showToast('時間到！');
+          }
+          renderTimerUI();
+        }, 1000);
+      }
+
+      // Picker Helpers
+      function setPickerScope(scope) {
+        pickerScope = scope;
+        const gBtn = document.getElementById('pickScopeGroups');
+        const sBtn = document.getElementById('pickScopeStudents');
+        gBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold ' + (scope === 'groups' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600');
+        sBtn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold ' + (scope === 'students' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600');
+        lastPickedItem = null;
+        document.getElementById('pickerAwardRow').classList.add('hidden');
+        document.getElementById('pickerResultText').textContent = '準備抽籤';
+        document.getElementById('pickerResultSub').textContent = scope === 'groups' ? '將由所有小組中隨機抽出' : '將由本班座位表學生中隨機抽出';
+      }
+
+      function startRandomPick() {
+        const cls = getActiveClass();
+        const pool = pickerScope === 'groups' ? cls.groups : getActiveStudents();
+        if (!pool.length) {
+          showToast('本班名單為空，請先點擊空位或設定新增名單');
+          return;
+        }
+        if (pickerInterval) clearInterval(pickerInterval);
+
+        const box = document.getElementById('pickerDisplayBox');
+        const textEl = document.getElementById('pickerResultText');
+        const subEl = document.getElementById('pickerResultSub');
+        const awardRow = document.getElementById('pickerAwardRow');
+
+        awardRow.classList.add('hidden');
+        box.classList.add('picker-highlight');
+        subEl.textContent = '抽籤中...';
+
+        let steps = 0;
+        pickerInterval = setInterval(() => {
+          const rand = pool[Math.floor(Math.random() * pool.length)];
+          textEl.textContent = rand.name;
+          playTone('tick');
+          steps += 1;
+          if (steps >= 18) {
+            clearInterval(pickerInterval);
+            pickerInterval = null;
+            box.classList.remove('picker-highlight');
+            lastPickedItem = {
+              type: pickerScope === 'groups' ? 'group' : 'student',
+              id: rand.id,
+              name: rand.name
+            };
+            subEl.textContent = '恭喜抽中！可直接為佢哋加分';
+            awardRow.classList.remove('hidden');
+            playTone('fanfare');
+          }
+        }, 75);
+      }
+
+      function openWinnerModal() {
+        const cls = getActiveClass();
+        const isStudents = state.activeTab === 'students';
+        const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+
+        if (isStudents) {
+          document.getElementById('winnerModalTitle').textContent = cls.name + ' 累積總分排行榜';
+          document.getElementById('winnerModalSub').textContent = '以累積總分排名（吸印扣分唔會影響排名）';
+          const sorted = [...getActiveStudents()].sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
+          document.getElementById('winnerList').innerHTML = sorted.map((item, idx) => `
+            <div class="flex items-center justify-between p-3 rounded-xl ${idx === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50 border border-slate-200'}">
+              <div class="flex items-center gap-2.5">
+                <span class="text-xl">${medals[idx] || ''}</span>
+                <div>
+                  <div class="font-bold text-slate-900">${escapeHtml(item.name)}</div>
+                  <div class="text-[11px] text-slate-500">目前可用 ${item.score} 分</div>
+                </div>
+              </div>
+              <span class="font-black text-lg text-indigo-700">${item.totalScore} 分</span>
+            </div>
+          `).join('') || '<p class="text-sm text-slate-400 text-center py-4">本班暫無學生資料</p>';
+        } else {
+          document.getElementById('winnerModalTitle').textContent = cls.name + ' 小組領先排行榜';
+          document.getElementById('winnerModalSub').textContent = '目前各組得分排名';
+          const sorted = [...cls.groups].sort((a, b) => b.score - a.score).slice(0, 3);
+          document.getElementById('winnerList').innerHTML = sorted.map((item, idx) => `
+            <div class="flex items-center justify-between p-3 rounded-xl ${idx === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50 border border-slate-200'}">
+              <div class="flex items-center gap-2.5">
+                <span class="text-xl">${medals[idx] || ''}</span>
+                <span class="font-bold text-slate-900">${escapeHtml(item.name)}</span>
+              </div>
+              <span class="font-black text-lg text-indigo-700">${item.score} 分</span>
+            </div>
+          `).join('');
+        }
+
+        playTone('fanfare');
+        fireConfetti();
+        document.getElementById('winnerModal').classList.remove('hidden');
+      }
+
+      function swapSeats(fromIdx, toIdx) {
+        if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= 30 || toIdx >= 30) return;
+        const cls = getActiveClass();
+        const a = cls.students[fromIdx];
+        const b = cls.students[toIdx];
+        if (!a || !b) return;
+
+        cls.students[fromIdx] = b;
+        cls.students[toIdx] = a;
+
+        undoStack.push({ kind: 'swap', classId: cls.id, fromIdx, toIdx, historyId: null });
+        if (undoStack.length > 40) undoStack.shift();
+
+        cls.history.unshift({
+          id: 'h_' + Date.now() + '_swap',
+          time: formatTimeStr(new Date()),
+          type: 'student',
+          targetId: a.id,
+          targetName: a.name,
+          delta: 0,
+          isStamp: false,
+          reason: b.name ? ('⇄ 與 ' + b.name + ' 調位') : ('⇄ 移至 R' + (Math.floor(toIdx / 6) + 1) + 'C' + ((toIdx % 6) + 1)),
+          newScore: a.score,
+          totalAfter: a.totalScore
+        });
+        if (cls.history.length > 200) cls.history.pop();
+
+        playTone('plus');
+        saveState();
+        renderAll();
+        if (state.gasAutoSync && state.gasUrl) {
+          pushToGas(true, '✅ 調位已同步儲存至 Google Sheets');
+        }
+
+        if (b.name) {
+          showToast('已調位：' + a.name + ' ⇄ ' + b.name);
+        } else {
+          const r = Math.floor(toIdx / 6) + 1;
+          const c = (toIdx % 6) + 1;
+          showToast('已移位：' + a.name + ' → 第 ' + r + ' 排第 ' + c + ' 行');
+        }
+      }
+
+      function initSeatDragAndDrop() {
+        const grid = document.getElementById('seatingGrid');
+        let holdTimer = null;
+        let dragging = false;
+        let sourceIdx = -1;
+        let currentTargetIdx = -1;
+        let startX = 0;
+        let startY = 0;
+        let ghostEl = null;
+        let activePointerId = null;
+
+        function clearDropHighlights() {
+          grid.querySelectorAll('.seat-drop-target').forEach((el) => el.classList.remove('seat-drop-target'));
+        }
+
+        function createGhost(seat, x, y) {
+          const el = document.createElement('div');
+          el.className = 'fixed pointer-events-none z-50 px-3.5 py-2.5 rounded-xl bg-indigo-600 text-white shadow-2xl border-2 border-indigo-300 flex items-center gap-2 font-extrabold text-sm';
+          el.style.left = x + 'px';
+          el.style.top = y + 'px';
+          el.style.transform = 'translate(-50%, -50%) scale(1.06)';
+          el.innerHTML = '<span>⇄</span><span>' + escapeHtml(seat.name) + '</span><span class="text-xs bg-white/20 px-1.5 py-0.5 rounded-md">總 ' + seat.totalScore + '</span>';
+          document.body.appendChild(el);
+          return el;
+        }
+
+        function startDragging(x, y) {
+          if (dragging || sourceIdx < 0) return;
+          const cls = getActiveClass();
+          const seat = cls.students[sourceIdx];
+          if (!seat || !seat.name) return;
+
+          dragging = true;
+          document.body.classList.add('is-dragging-seat');
+          const srcCard = grid.querySelector('[data-seat-idx="' + sourceIdx + '"]');
+          if (srcCard) srcCard.classList.add('seat-dragging');
+
+          ghostEl = createGhost(seat, x, y);
+          playTone('tick');
+          if (navigator.vibrate) {
+            try { navigator.vibrate(25); } catch (e) {}
+          }
+        }
+
+        function cleanupDrag() {
+          if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+          if (ghostEl) { ghostEl.remove(); ghostEl = null; }
+          document.body.classList.remove('is-dragging-seat');
+          grid.querySelectorAll('.seat-dragging').forEach((el) => el.classList.remove('seat-dragging'));
+          clearDropHighlights();
+          dragging = false;
+          sourceIdx = -1;
+          currentTargetIdx = -1;
+          activePointerId = null;
+        }
+
+        grid.addEventListener('pointerdown', (e) => {
+          if (e.button !== undefined && e.button !== 0) return;
+          // Drag ONLY from blank areas of the card (never hijack clicks on name, Pokémon, cells, or -1/+1/吸印 buttons!)
+          if (e.target.closest('button')) return;
+
+          const card = e.target.closest('[data-seat-idx]');
+          if (!card) return;
+          const idx = parseInt(card.dataset.seatIdx, 10);
+          const cls = getActiveClass();
+          if (Number.isNaN(idx) || !cls.students[idx] || !cls.students[idx].name) return;
+
+          sourceIdx = idx;
+          startX = e.clientX;
+          startY = e.clientY;
+          activePointerId = e.pointerId;
+
+          holdTimer = setTimeout(() => {
+            startDragging(startX, startY);
+          }, 140);
+        });
+
+        window.addEventListener('pointermove', (e) => {
+          if (activePointerId === null || e.pointerId !== activePointerId) return;
+
+          if (!dragging) {
+            const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+            if (dist > 6) {
+              if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+              startDragging(e.clientX, e.clientY);
+            }
+          }
+
+          if (dragging && ghostEl) {
+            e.preventDefault();
+            ghostEl.style.left = e.clientX + 'px';
+            ghostEl.style.top = e.clientY + 'px';
+
+            const elUnder = document.elementFromPoint(e.clientX, e.clientY);
+            const targetCard = elUnder ? elUnder.closest('[data-seat-idx]') : null;
+            clearDropHighlights();
+            if (targetCard) {
+              const tIdx = parseInt(targetCard.dataset.seatIdx, 10);
+              if (!Number.isNaN(tIdx) && tIdx !== sourceIdx) {
+                currentTargetIdx = tIdx;
+                targetCard.classList.add('seat-drop-target');
+                return;
+              }
+            }
+            currentTargetIdx = -1;
+          }
+        }, { passive: false });
+
+        function handlePointerEnd(e) {
+          if (activePointerId === null || e.pointerId !== activePointerId) return;
+          const wasDragging = dragging;
+          const from = sourceIdx;
+          const to = currentTargetIdx;
+          cleanupDrag();
+          if (wasDragging) {
+            suppressNextClickUntil = Date.now() + 250;
+            if (to >= 0 && to !== from) {
+              swapSeats(from, to);
+            }
+          }
+        }
+
+        window.addEventListener('pointerup', handlePointerEnd);
+        window.addEventListener('pointercancel', handlePointerEnd);
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // === Pokémon Battle Royale Engine + Canvas VFX ===
+      let battleRafId = null;
+      let battleClashTimer = null;
+      let battleFighters = [];
+      let battleWinnerStudentId = null;
+      let battleActive = false;
+      let fxParticles = [];
+      let fxBeams = [];
+      let fxRings = [];
+      let fxChampionPos = null;
+      let fxRayAngle = 0;
+
+      const LINE_ELEMENTS = [
+        { type: 'grass',  label: '草系', move: '飛葉快刀', color: '#4ade80', core: '#dcfce7', glow: '#16a34a', icon: '🍃' }, // 0 Bulbasaur
+        { type: 'fire',   label: '火系', move: '噴射火焰', color: '#f97316', core: '#fef08a', glow: '#dc2626', icon: '🔥' }, // 1 Charmander
+        { type: 'water',  label: '水系', move: '高壓水炮', color: '#38bdf8', core: '#e0f2fe', glow: '#0284c7', icon: '💧' }, // 2 Squirtle
+        { type: 'elec',   label: '電系', move: '十萬伏特', color: '#facc15', core: '#ffffff', glow: '#eab308', icon: '⚡' }, // 3 Pichu/Pikachu
+        { type: 'dragon', label: '龍系', move: '龍之波動', color: '#c084fc', core: '#f3e8ff', glow: '#7e22ce', icon: '🐉' }, // 4 Dratini
+        { type: 'fire',   label: '火系', move: '大字爆炎', color: '#f97316', core: '#fef08a', glow: '#dc2626', icon: '🔥' }, // 5 Cyndaquil
+        { type: 'water',  label: '水系', move: '水流尾',   color: '#38bdf8', core: '#e0f2fe', glow: '#0284c7', icon: '💧' }, // 6 Totodile
+        { type: 'grass',  label: '草系', move: '葉刃',     color: '#4ade80', core: '#dcfce7', glow: '#16a34a', icon: '🍃' }, // 7 Treecko
+        { type: 'fire',   label: '火系', move: '火焰踢',   color: '#f97316', core: '#fef08a', glow: '#dc2626', icon: '🔥' }, // 8 Torchic
+        { type: 'water',  label: '水系', move: '濁流',     color: '#38bdf8', core: '#e0f2fe', glow: '#0284c7', icon: '💧' }, // 9 Mudkip
+        { type: 'dragon', label: '龍系', move: '龍爪',     color: '#c084fc', core: '#f3e8ff', glow: '#7e22ce', icon: '🐉' }, // 10 Gible
+        { type: 'water',  label: '水系', move: '泡沫光線', color: '#38bdf8', core: '#e0f2fe', glow: '#0284c7', icon: '💧' }  // 11 Piplup
+      ];
+
+      function getFighterElement(poke) {
+        if (!poke || poke.stage === 0) return { type: 'egg', color: '#fef08a', glow: '#f59e0b', icon: '⭐' };
+        return LINE_ELEMENTS[poke.lineIdx % LINE_ELEMENTS.length];
+      }
+
+      function spawnElementalAttackVfx(ax, ay, dx, dy, elem, isCrit, isKo) {
+        // Primary elemental beam / projectile trail
+        fxBeams.push({
+          x1: ax, y1: ay, x2: dx, y2: dy,
+          type: elem.type,
+          color: elem.color,
+          core: elem.core || '#ffffff',
+          glow: elem.glow,
+          life: 1.0,
+          decay: isCrit ? 0.04 : 0.058,
+          width: isCrit ? 7.5 : 4.5
+        });
+
+        // Dragon adds traveling pulse rings along the path
+        if (elem.type === 'dragon') {
+          for (let step = 1; step <= 3; step++) {
+            const t = step / 4;
+            fxRings.push({
+              x: ax + (dx - ax) * t,
+              y: ay + (dy - ay) * t,
+              r: 6,
+              maxR: 28 + step * 8,
+              color: step % 2 === 0 ? '#e879f9' : '#a855f7',
+              life: 0.95,
+              decay: 0.05,
+              lineWidth: 3
+            });
+          }
+        }
+
+        // Expanding shockwave ring at impact point
+        fxRings.push({
+          x: dx, y: dy,
+          r: 8,
+          maxR: isKo ? 96 : (isCrit ? 70 : 46),
+          color: isKo ? '#fde047' : elem.color,
+          life: 1.0,
+          decay: isKo ? 0.03 : 0.052,
+          lineWidth: isKo ? 5.5 : 3.2
+        });
+
+        // Type-specific particle shapes!
+        const count = isKo ? 34 : (isCrit ? 22 : 14);
+        for (let i = 0; i < count; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = (isKo ? 2.4 : 1.6) + Math.random() * (isKo ? 5.4 : 3.8);
+          let shape = 'dot';
+          if (elem.type === 'water') shape = 'bubble';
+          else if (elem.type === 'grass') shape = 'leaf';
+          else if (elem.type === 'fire') shape = 'flame';
+          else if (elem.type === 'elec') shape = 'spark';
+          else if (elem.type === 'dragon') shape = 'star';
+
+          fxParticles.push({
+            x: dx, y: dy,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - (shape === 'flame' ? 1.2 : 0),
+            size: (isKo ? 4.5 : 3.2) + Math.random() * 4,
+            rot: Math.random() * Math.PI * 2,
+            vrot: (Math.random() - 0.5) * 0.3,
+            shape: shape,
+            color: (isKo && i % 3 === 0) ? '#fde047' : (shape === 'flame' && i % 2 === 0 ? '#fde047' : elem.color),
+            life: 1.0,
+            decay: 0.024 + Math.random() * 0.028
+          });
+        }
+      }
+
+      function triggerArenaShake(stage, isHeavy) {
+        const box = stage.parentElement;
+        if (!box) return;
+        box.classList.remove('arena-shake');
+        void box.offsetWidth;
+        box.classList.add('arena-shake');
+
+        if (isHeavy) {
+          const flash = document.createElement('div');
+          flash.className = 'crit-flash-overlay pointer-events-none absolute inset-0 bg-amber-300/35 z-30';
+          stage.appendChild(flash);
+          setTimeout(() => flash.remove(), 300);
+        }
+      }
+
+      function renderBattleCanvasVfx(canvas) {
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        const w = Math.max(1, Math.round(rect.width));
+        const h = Math.max(1, Math.round(rect.height));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, w, h);
+
+        // Rotating golden spotlight rays behind Champion
+        if (fxChampionPos) {
+          fxRayAngle += 0.015;
+          ctx.save();
+          ctx.translate(fxChampionPos.x, fxChampionPos.y);
+          ctx.rotate(fxRayAngle);
+          const rays = 12;
+          for (let i = 0; i < rays; i++) {
+            ctx.rotate((Math.PI * 2) / rays);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(-22, -Math.max(w, h));
+            ctx.lineTo(22, -Math.max(w, h));
+            ctx.closePath();
+            const grad = ctx.createRadialGradient(0, 0, 10, 0, 0, 260);
+            grad.addColorStop(0, 'rgba(253, 224, 71, 0.35)');
+            grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        // Draw type-specific elemental attacks
+        for (let i = fxBeams.length - 1; i >= 0; i--) {
+          const b = fxBeams[i];
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, b.life);
+          ctx.shadowColor = b.glow;
+          ctx.shadowBlur = 18;
+          ctx.lineCap = 'round';
+
+          if (b.type === 'elec') {
+            // Jagged forked golden lightning bolt + bright white core
+            const pts = [{ x: b.x1, y: b.y1 }];
+            for (let s = 1; s < 7; s++) {
+              const t = s / 7;
+              pts.push({
+                x: b.x1 + (b.x2 - b.x1) * t + (Math.random() - 0.5) * 30,
+                y: b.y1 + (b.y2 - b.y1) * t + (Math.random() - 0.5) * 30
+              });
+            }
+            pts.push({ x: b.x2, y: b.y2 });
+            ctx.strokeStyle = b.color;
+            ctx.lineWidth = b.width + 2;
+            ctx.beginPath();
+            pts.forEach((pt, idx) => idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
+            ctx.stroke();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else if (b.type === 'fire') {
+            // Blazing flame jet (outer red-orange + hot yellow core)
+            const grad = ctx.createLinearGradient(b.x1, b.y1, b.x2, b.y2);
+            grad.addColorStop(0, '#fef08a');
+            grad.addColorStop(0.5, '#f97316');
+            grad.addColorStop(1, '#dc2626');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = b.width * 2.1 * b.life;
+            ctx.beginPath();
+            ctx.moveTo(b.x1, b.y1);
+            ctx.lineTo(b.x2, b.y2);
+            ctx.stroke();
+            ctx.strokeStyle = '#fef08a';
+            ctx.lineWidth = b.width * 0.8 * b.life;
+            ctx.stroke();
+          } else if (b.type === 'water') {
+            // Wavy hydro cannon stream
+            const dx = b.x2 - b.x1, dy = b.y2 - b.y1;
+            const len = Math.hypot(dx, dy) || 1;
+            const nx = -dy / len, ny = dx / len;
+            ctx.strokeStyle = b.color;
+            ctx.lineWidth = b.width * 1.6;
+            ctx.beginPath();
+            for (let s = 0; s <= 12; s++) {
+              const t = s / 12;
+              const wave = Math.sin(t * Math.PI * 4 + b.life * 10) * 9;
+              const px = b.x1 + dx * t + nx * wave;
+              const py = b.y1 + dy * t + ny * wave;
+              if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.strokeStyle = '#e0f2fe';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else if (b.type === 'grass') {
+            // Twin green razor-leaf slash arcs
+            const mx = (b.x1 + b.x2) / 2, my = (b.y1 + b.y2) / 2;
+            ctx.strokeStyle = b.color;
+            ctx.lineWidth = b.width * 1.1;
+            ctx.beginPath();
+            ctx.moveTo(b.x1, b.y1);
+            ctx.quadraticCurveTo(mx - 22, my - 22, b.x2, b.y2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(b.x1, b.y1);
+            ctx.quadraticCurveTo(mx + 22, my + 22, b.x2, b.y2);
+            ctx.stroke();
+          } else {
+            // Dragon pulse glowing violet beam
+            const grad = ctx.createLinearGradient(b.x1, b.y1, b.x2, b.y2);
+            grad.addColorStop(0, '#f0abfc');
+            grad.addColorStop(0.5, '#a855f7');
+            grad.addColorStop(1, '#4f46e5');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = b.width * 1.8;
+            ctx.beginPath();
+            ctx.moveTo(b.x1, b.y1);
+            ctx.lineTo(b.x2, b.y2);
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          b.life -= b.decay;
+          if (b.life <= 0) fxBeams.splice(i, 1);
+        }
+
+        // Draw expanding shockwave rings
+        for (let i = fxRings.length - 1; i >= 0; i--) {
+          const r = fxRings[i];
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, r.life);
+          ctx.strokeStyle = r.color;
+          ctx.lineWidth = r.lineWidth * r.life;
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          r.r += (r.maxR - r.r) * 0.22;
+          r.life -= r.decay;
+          if (r.life <= 0) fxRings.splice(i, 1);
+        }
+
+        // Draw type-specific particles (bubbles, spinning leaves, flames, sparks, dragon stars)
+        for (let i = fxParticles.length - 1; i >= 0; i--) {
+          const p = fxParticles[i];
+          const sz = Math.max(1, p.size * p.life);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot || 0);
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+
+          if (p.shape === 'bubble') {
+            ctx.strokeStyle = '#bae6fd';
+            ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(0, 0, sz * 1.25, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          } else if (p.shape === 'leaf') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, sz * 1.7, sz * 0.7, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.shape === 'spark') {
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-sz * 1.5, 0); ctx.lineTo(sz * 1.5, 0);
+            ctx.moveTo(0, -sz * 1.5); ctx.lineTo(0, sz * 1.5);
+            ctx.stroke();
+          } else if (p.shape === 'star') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            for (let k = 0; k < 4; k++) {
+              const a = (k * Math.PI) / 2;
+              ctx.lineTo(Math.cos(a) * sz * 1.6, Math.sin(a) * sz * 1.6);
+              ctx.lineTo(Math.cos(a + Math.PI / 4) * sz * 0.55, Math.sin(a + Math.PI / 4) * sz * 0.55);
+            }
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(0, 0, sz, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot = (p.rot || 0) + (p.vrot || 0);
+          p.vx *= 0.95;
+          p.vy *= 0.95;
+          p.life -= p.decay;
+          if (p.life <= 0) fxParticles.splice(i, 1);
+        }
+      }
+
+      function stopBattleLoops() {
+        if (battleRafId) {
+          cancelAnimationFrame(battleRafId);
+          battleRafId = null;
+        }
+        if (battleClashTimer) {
+          clearInterval(battleClashTimer);
+          battleClashTimer = null;
+        }
+      }
+
+      function spawnBattleSpark(stage, x, y, text, colorClass) {
+        const el = document.createElement('div');
+        el.className = 'battle-spark text-sm sm:text-base ' + colorClass;
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        el.textContent = text;
+        stage.appendChild(el);
+        setTimeout(() => el.remove(), 580);
+      }
+
+      function finishBattleAndReturn() {
+        if (!battleActive) {
+          closeModal('battleOverlay');
+          return;
+        }
+        stopBattleLoops();
+        battleActive = false;
+        fxParticles = [];
+        fxBeams = [];
+        fxRings = [];
+        fxChampionPos = null;
+        const fxCanvas = document.getElementById('battleFxCanvas');
+        if (fxCanvas) {
+          const c = fxCanvas.getContext('2d');
+          if (c) c.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+        }
+
+        const overlay = document.getElementById('battleOverlay');
+        const stage = document.getElementById('battleArenaStage');
+        const stageRect = stage.getBoundingClientRect();
+
+        // Fly remaining/all fighter nodes smoothly back toward their seat positions
+        battleFighters.forEach((f) => {
+          if (!f.el) return;
+          const seatEl = document.querySelector('[data-poke-visual="' + f.student.id + '"]');
+          if (seatEl) {
+            const seatRect = seatEl.getBoundingClientRect();
+            const targetX = seatRect.left + seatRect.width / 2 - stageRect.left;
+            const targetY = seatRect.top + seatRect.height / 2 - stageRect.top;
+            f.el.style.transition = 'all 0.55s cubic-bezier(0.22, 1, 0.36, 1)';
+            f.el.style.opacity = '1';
+            f.el.style.left = targetX + 'px';
+            f.el.style.top = targetY + 'px';
+            f.el.style.transform = 'translate(-50%, -50%) scale(0.55)';
+          }
+        });
+
+        playTone('tick');
+        setTimeout(() => {
+          stage.querySelectorAll('.battle-fighter-node, .battle-spark').forEach((n) => n.remove());
+          battleFighters = [];
+          battleWinnerStudentId = null;
+          document.getElementById('battleVictoryFooter').classList.add('hidden');
+          overlay.classList.add('hidden');
+        }, 560);
+      }
+
+      function startBattleRoyale() {
+        const cls = getActiveClass();
+        const activeStudents = getActiveStudents();
+        if (activeStudents.length < 2) {
+          showToast('最少要有 2 位學生先可以開大亂鬥！');
+          return;
+        }
+
+        // Only hatched Pokémon participate (eggs never join Battle Royale)
+        const participants = activeStudents.filter((s) => ensurePokemon(s).stage >= 1);
+        if (participants.length < 2) {
+          showToast('最少要有 2 隻已孵化嘅精靈先可以開大亂鬥！（精靈蛋唔會參戰，目前有 ' + participants.length + ' 隻）');
+          return;
+        }
+
+        stopBattleLoops();
+        battleActive = true;
+        battleWinnerStudentId = null;
+        fxParticles = [];
+        fxBeams = [];
+        fxRings = [];
+        fxChampionPos = null;
+
+        const overlay = document.getElementById('battleOverlay');
+        const stage = document.getElementById('battleArenaStage');
+        const statusEl = document.getElementById('battleStatusText');
+        const aliveBadge = document.getElementById('battleAliveBadge');
+        const victoryFooter = document.getElementById('battleVictoryFooter');
+
+        victoryFooter.classList.add('hidden');
+        document.getElementById('battleRewardWinnerBtn').disabled = false;
+        document.getElementById('battleRewardWinnerBtn').textContent = '獎勵冠軍 +1 分';
+        stage.querySelectorAll('.battle-fighter-node, .battle-spark').forEach((n) => n.remove());
+
+        // Capture each seat's screen position BEFORE showing overlay
+        const seatCoords = {};
+        participants.forEach((s) => {
+          const el = document.querySelector('[data-poke-visual="' + s.id + '"]');
+          if (el) {
+            const r = el.getBoundingClientRect();
+            seatCoords[s.id] = { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+          }
+        });
+
+        overlay.classList.remove('hidden');
+        document.getElementById('battleTitle').textContent = cls.name + ' 精靈大亂鬥！';
+        statusEl.textContent = participants.length + ' 隻精靈跳出場地準備開戰！';
+        aliveBadge.textContent = '存活：' + participants.length;
+
+        const stageRect = stage.getBoundingClientRect();
+        const W = Math.max(320, stageRect.width);
+        const H = Math.max(260, stageRect.height);
+        const pad = 54;
+
+        battleFighters = participants.map((student, i) => {
+          const poke = ensurePokemon(student);
+          const form = getPokemonForm(poke);
+          const maxHp = 65 + poke.stage * 22;
+          const startPos = seatCoords[student.id];
+          const initX = startPos ? (startPos.cx - stageRect.left) : W / 2;
+          const initY = startPos ? (startPos.cy - stageRect.top) : H / 2;
+
+          // Target random arena entry point
+          const angle = (i / participants.length) * Math.PI * 2 + Math.random() * 0.4;
+          const radiusX = Math.min(W * 0.36, 280) * (0.55 + Math.random() * 0.45);
+          const radiusY = Math.min(H * 0.36, 180) * (0.55 + Math.random() * 0.45);
+          const arenaX = Math.max(pad, Math.min(W - pad, W / 2 + Math.cos(angle) * radiusX));
+          const arenaY = Math.max(pad, Math.min(H - pad, H / 2 + Math.sin(angle) * radiusY));
+
+          const node = document.createElement('div');
+          node.className = 'battle-fighter-node absolute flex flex-col items-center pointer-events-none select-none';
+          node.style.left = initX + 'px';
+          node.style.top = initY + 'px';
+          node.style.transform = 'translate(-50%, -50%) scale(0.7)';
+          node.style.transition = 'left 0.65s cubic-bezier(0.22, 1, 0.36, 1), top 0.65s cubic-bezier(0.22, 1, 0.36, 1), transform 0.65s cubic-bezier(0.22, 1, 0.36, 1)';
+          node.innerHTML = `
+            <div class="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center">
+              ${getPokemonSpriteHtml(poke, 'w-11 h-11 sm:w-13 sm:h-13')}
+            </div>
+            <div class="w-12 h-1.5 bg-slate-700 rounded-full overflow-hidden border border-white/20 mt-0.5">
+              <div class="hp-bar h-full bg-emerald-400 transition-all duration-200" style="width: 100%"></div>
+            </div>
+            <span class="mt-0.5 px-1.5 py-0.2 rounded bg-slate-950/80 text-white text-[10px] font-extrabold whitespace-nowrap border border-white/15">${escapeHtml(student.name)}</span>
+          `;
+          stage.appendChild(node);
+
+          return {
+            student,
+            poke,
+            form,
+            hp: maxHp,
+            maxHp,
+            alive: true,
+            x: arenaX,
+            y: arenaY,
+            vx: (Math.random() - 0.5) * 4.2,
+            vy: (Math.random() - 0.5) * 4.2,
+            el: node
+          };
+        });
+
+        playTone('fanfare');
+
+        // Step 1: Jump from seats into the arena!
+        requestAnimationFrame(() => {
+          battleFighters.forEach((f) => {
+            f.el.style.left = f.x + 'px';
+            f.el.style.top = f.y + 'px';
+            f.el.style.transform = 'translate(-50%, -50%) scale(1)';
+          });
+        });
+
+        // Step 2: Start active physics & clash rounds after jump-in lands
+        setTimeout(() => {
+          if (!battleActive) return;
+          battleFighters.forEach((f) => {
+            f.el.style.transition = 'opacity 0.4s ease, transform 0.25s ease';
+          });
+          statusEl.textContent = '大亂鬥正式開始！';
+
+          function stepPhysics() {
+            if (!battleActive) return;
+            const curRect = stage.getBoundingClientRect();
+            const cW = Math.max(300, curRect.width);
+            const cH = Math.max(240, curRect.height);
+
+            battleFighters.forEach((f) => {
+              if (!f.alive) return;
+              f.x += f.vx;
+              f.y += f.vy;
+              if (f.x < pad) { f.x = pad; f.vx = Math.abs(f.vx); }
+              if (f.x > cW - pad) { f.x = cW - pad; f.vx = -Math.abs(f.vx); }
+              if (f.y < pad) { f.y = pad; f.vy = Math.abs(f.vy); }
+              if (f.y > cH - pad) { f.y = cH - pad; f.vy = -Math.abs(f.vy); }
+              f.el.style.left = f.x + 'px';
+              f.el.style.top = f.y + 'px';
+            });
+            renderBattleCanvasVfx(document.getElementById('battleFxCanvas'));
+            battleRafId = requestAnimationFrame(stepPhysics);
+          }
+          battleRafId = requestAnimationFrame(stepPhysics);
+
+          // Clash loop: fighters attack each other until only 1 champion remains
+          const clashIntervalMs = participants.length > 14 ? 320 : 460;
+          battleClashTimer = setInterval(() => {
+            if (!battleActive) return;
+            const alive = battleFighters.filter((f) => f.alive);
+            if (alive.length <= 1) {
+              stopBattleLoops();
+              if (alive.length === 1) {
+                declareBattleWinner(alive[0], stage);
+              }
+              return;
+            }
+
+            // Pick an attacker and defender
+            const attacker = alive[Math.floor(Math.random() * alive.length)];
+            let defender = alive[Math.floor(Math.random() * alive.length)];
+            if (defender === attacker) {
+              defender = alive[(alive.indexOf(attacker) + 1) % alive.length];
+            }
+
+            // Dash attacker toward defender
+            const dx = defender.x - attacker.x;
+            const dy = defender.y - attacker.y;
+            const dist = Math.hypot(dx, dy) || 1;
+            attacker.vx = (dx / dist) * 5.2;
+            attacker.vy = (dy / dist) * 5.2;
+
+            const isCrit = Math.random() < 0.28;
+            const baseDmg = 26 + attacker.poke.stage * 8 + Math.floor(Math.random() * 18);
+            const dmg = isCrit ? Math.round(baseDmg * 1.45) : baseDmg;
+            defender.hp = Math.max(0, defender.hp - dmg);
+
+            // Visual hit feedback
+            const hpPct = Math.round((defender.hp / defender.maxHp) * 100);
+            const bar = defender.el.querySelector('.hp-bar');
+            if (bar) {
+              bar.style.width = hpPct + '%';
+              bar.className = 'hp-bar h-full transition-all duration-200 ' +
+                (hpPct > 50 ? 'bg-emerald-400' : (hpPct > 25 ? 'bg-amber-400' : 'bg-rose-500'));
+            }
+            defender.el.classList.remove('fighter-hit');
+            void defender.el.offsetWidth;
+            defender.el.classList.add('fighter-hit');
+
+            const elem = getFighterElement(attacker.poke);
+            const isKo = defender.hp <= 0;
+            spawnElementalAttackVfx(attacker.x, attacker.y, defender.x, defender.y, elem, isCrit, isKo);
+            if (isCrit || isKo) {
+              triggerArenaShake(stage, isKo);
+            }
+
+            spawnBattleSpark(
+              stage,
+              defender.x,
+              defender.y - 18,
+              isCrit ? (elem.icon + ' 暴擊 -' + dmg) : (elem.icon + ' -' + dmg),
+              isCrit ? 'text-amber-300' : 'text-rose-300'
+            );
+
+            // Bounce defender back
+            defender.vx = (dx / dist) * 4.5 + (Math.random() - 0.5) * 2;
+            defender.vy = (dy / dist) * 4.5 + (Math.random() - 0.5) * 2;
+
+            if (isKo) {
+              defender.alive = false;
+              defender.el.style.opacity = '0';
+              defender.el.style.transform = 'translate(-50%, -50%) scale(0.35) rotate(180deg)';
+              playTone('ko');
+              spawnBattleSpark(stage, defender.x, defender.y, '💥 KO!', 'text-yellow-300');
+              statusEl.textContent = elem.icon + ' ' + attacker.student.name + ' 的 ' + attacker.form.name + ' 用【' + elem.move + '】擊倒咗 ' + defender.student.name + '！';
+            } else {
+              playTone(isCrit ? 'zap' : 'tick');
+              statusEl.textContent = elem.icon + ' ' + attacker.student.name + ' 的 ' + attacker.form.name + ' 使出【' + elem.move + '】攻擊 ' + defender.student.name + (isCrit ? '（會心一擊！）' : '');
+            }
+
+            const remaining = battleFighters.filter((f) => f.alive);
+            aliveBadge.textContent = '存活：' + remaining.length;
+
+            if (remaining.length === 1) {
+              stopBattleLoops();
+              declareBattleWinner(remaining[0], stage);
+            }
+          }, clashIntervalMs);
+        }, 700);
+      }
+
+      function declareBattleWinner(winner, stage) {
+        battleWinnerStudentId = winner.student.id;
+        const rect = stage.getBoundingClientRect();
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        winner.el.style.transition = 'all 0.6s cubic-bezier(0.22, 1, 0.36, 1)';
+        winner.el.style.left = cx + 'px';
+        winner.el.style.top = cy + 'px';
+        winner.el.style.transform = 'translate(-50%, -50%) scale(1.9)';
+        winner.el.style.zIndex = '35';
+
+        fxChampionPos = { x: cx, y: cy };
+        spawnElementalAttackVfx(cx, cy, cx, cy, { type: 'elec', color: '#fde047', glow: '#f59e0b' }, true, true);
+        function animateChampionRays() {
+          if (!battleActive || !fxChampionPos) return;
+          renderBattleCanvasVfx(document.getElementById('battleFxCanvas'));
+          battleRafId = requestAnimationFrame(animateChampionRays);
+        }
+        battleRafId = requestAnimationFrame(animateChampionRays);
+
+        document.getElementById('battleStatusText').textContent = '🏆 決出最終勝者！';
+        document.getElementById('battleAliveBadge').textContent = '冠軍誕生 👑';
+        document.getElementById('battleWinnerHeadline').textContent =
+          '冠軍：' + winner.student.name + ' 的 ' + winner.form.name + '！';
+        document.getElementById('battleWinnerSub').textContent =
+          '擊敗全場對手成為大亂鬥最後贏家，按「完成」返回自己位置';
+        document.getElementById('battleVictoryFooter').classList.remove('hidden');
+
+        playTone('fanfare');
+        fireConfetti();
+      }
+
+      function bindEvents() {
+        document.querySelectorAll('.tab-btn, .tab-btn-mobile').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.activeTab = btn.dataset.tab;
+            saveState();
+            renderAll();
+          });
+        });
+
+        // Class tabs bar events
+        document.getElementById('classTabsList').addEventListener('click', (e) => {
+          const editBtn = e.target.closest('button[data-edit-class]');
+          if (editBtn) {
+            openClassTabModal(editBtn.dataset.editClass);
+            return;
+          }
+          const switchBtn = e.target.closest('button[data-switch-class]');
+          if (switchBtn) {
+            state.activeClassId = switchBtn.dataset.switchClass;
+            globalStampMode = false;
+            stampModeSeats.clear();
+            saveState();
+            renderAll();
+            if (state.gasAutoSync && state.gasUrl && !syncedClassesThisSession.has(state.activeClassId)) {
+              pullFromGas(true);
+            }
+          }
+        });
+
+        document.getElementById('addClassBtn').addEventListener('click', () => openClassTabModal(null));
+        document.getElementById('saveClassTabBtn').addEventListener('click', saveClassTabModal);
+        document.getElementById('classTabNameInput').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveClassTabModal();
+        });
+        document.getElementById('deleteClassTabBtn').addEventListener('click', () => {
+          if (!editingClassTabId || state.classes.length <= 1) return;
+          const target = state.classes.find((c) => c.id === editingClassTabId);
+          closeModal('classTabModal');
+          openConfirm('刪除班別', '確定刪除「' + (target ? target.name : '') + '」及其所有座位與分數紀錄嗎？', () => {
+            state.classes = state.classes.filter((c) => c.id !== editingClassTabId);
+            if (!state.classes.some((c) => c.id === state.activeClassId)) {
+              state.activeClassId = state.classes[0].id;
+            }
+            saveState();
+            renderAll();
+            showToast('已刪除班別');
+          });
+        });
+
+        // Edit Student Name modal events
+        document.getElementById('saveSeatNameBtn').addEventListener('click', () => saveEditedSeatName(false));
+        document.getElementById('clearSeatNameBtn').addEventListener('click', () => saveEditedSeatName(true));
+        document.getElementById('editNameInput').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveEditedSeatName(false);
+        });
+
+        // Card interactions
+        ['groupsView', 'studentsView'].forEach((viewId) => {
+          document.getElementById(viewId).addEventListener('click', (e) => {
+            if (viewId === 'studentsView' && Date.now() < suppressNextClickUntil) return;
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const action = btn.dataset.action;
+            const type = btn.dataset.type;
+            const id = btn.dataset.id;
+            if (action === 'score') {
+              updateScore(type, id, parseInt(btn.dataset.delta, 10));
+            } else if (action === 'cell-tap') {
+              updateScore('student', id, parseInt(btn.dataset.delta, 10));
+            } else if (action === 'toggle-stamp') {
+              toggleSeatStampMode(id);
+            } else if (action === 'poke-info') {
+              openPokeInfoModal(id);
+            } else if (action === 'edit-name') {
+              openEditNameModal(parseInt(btn.dataset.seatIdx, 10));
+            }
+          });
+        });
+
+        document.getElementById('battleRoyaleBtn').addEventListener('click', startBattleRoyale);
+        document.getElementById('battleFinishBtn').addEventListener('click', finishBattleAndReturn);
+        document.getElementById('battleCloseQuickBtn').addEventListener('click', finishBattleAndReturn);
+        document.getElementById('battleRewardWinnerBtn').addEventListener('click', () => {
+          if (!battleWinnerStudentId) return;
+          updateScore('student', battleWinnerStudentId, 1, '⚔️ 大亂鬥冠軍 +1');
+          const btn = document.getElementById('battleRewardWinnerBtn');
+          btn.disabled = true;
+          btn.textContent = '已獎勵 +1 分 ✓';
+          showToast('已為大亂鬥冠軍加 1 分！');
+        });
+
+        document.getElementById('resetEggsBtn').addEventListener('click', () => {
+          const cls = getActiveClass();
+          openConfirm(
+            '蛋重置',
+            '確定將「' + cls.name + '」所有學生的精靈變回「精靈蛋」嗎？（不會影響學生分數）',
+            () => {
+              cls.students.forEach((s, idx) => {
+                s.pokemon = createEggPokemon(Math.floor(Math.random() * POKEMON_LINES.length) + idx);
+              });
+              saveState();
+              renderAll();
+              playTone('tick');
+              if (state.gasAutoSync && state.gasUrl) pushToGas(true);
+              showToast('已將「' + cls.name + '」所有精靈重置為精靈蛋！');
+            }
+          );
+        });
+
+        document.getElementById('globalStampModeBtn').addEventListener('click', () => {
+          globalStampMode = !globalStampMode;
+          if (!globalStampMode) stampModeSeats.clear();
+          renderAll();
+          showToast(globalStampMode ? '已開啟全體吸印模式：扣分不會扣總分' : '已返回正常計分模式');
+        });
+
+        document.querySelectorAll('[data-close-modal]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const modalId = btn.dataset.closeModal;
+            closeModal(modalId);
+            if (modalId === 'timerModal') renderTimerUI();
+            if (modalId === 'pickerModal' && pickerInterval) {
+              clearInterval(pickerInterval);
+              pickerInterval = null;
+            }
+          });
+        });
+
+        document.getElementById('gasSyncBtn').addEventListener('click', () => {
+          if (!state.gasUrl || state.gasUrl.includes('/macros/library/')) {
+            openSettingsModal('gas');
+          } else {
+            pushToGas(false);
+          }
+        });
+
+        document.getElementById('classBonusBtn').addEventListener('click', () => awardAll(1));
+        document.getElementById('undoBtn').addEventListener('click', performUndo);
+        document.getElementById('celebrateBtn').addEventListener('click', openWinnerModal);
+
+
+
+        document.getElementById('resetScoresBtn').addEventListener('click', () => {
+          const cls = getActiveClass();
+          const isStudents = state.activeTab === 'students';
+          openConfirm(
+            '歸零分數',
+            isStudents
+              ? '確定將「' + cls.name + '」所有學生的目前可用分同累積總分歸零嗎？'
+              : '確定將「' + cls.name + '」所有小組分數歸零嗎？',
+            () => {
+              if (isStudents) {
+                cls.students.forEach((x) => { x.score = 0; x.stamps = 0; x.totalScore = 0; });
+                globalStampMode = false;
+                stampModeSeats.clear();
+              } else {
+                cls.groups.forEach((x) => { x.score = 0; });
+              }
+              undoStack = [];
+              saveState();
+              renderAll();
+              scheduleAutoSync();
+              showToast('已歸零分數');
+            }
+          );
+        });
+
+        document.getElementById('soundToggleBtn').addEventListener('click', () => {
+          state.soundEnabled = !state.soundEnabled;
+          saveState();
+          renderHeader();
+          if (window.lucide) window.lucide.createIcons();
+          showToast(state.soundEnabled ? '已開啟音效' : '已靜音');
+        });
+
+        document.getElementById('editTitleBtn').addEventListener('click', () => openSettingsModal('data'));
+        document.getElementById('openSettingsBtn').addEventListener('click', () => openSettingsModal('roster'));
+
+        document.getElementById('openPickerBtn').addEventListener('click', () => {
+          setPickerScope(state.activeTab === 'groups' ? 'groups' : 'students');
+          document.getElementById('pickerModal').classList.remove('hidden');
+        });
+
+        document.getElementById('openTimerBtn').addEventListener('click', () => {
+          document.getElementById('timerModal').classList.remove('hidden');
+          renderTimerUI();
+        });
+        document.getElementById('floatingTimerOpenBtn').addEventListener('click', () => {
+          document.getElementById('timerModal').classList.remove('hidden');
+          renderTimerUI();
+        });
+
+        document.getElementById('pickScopeGroups').addEventListener('click', () => setPickerScope('groups'));
+        document.getElementById('pickScopeStudents').addEventListener('click', () => setPickerScope('students'));
+        document.getElementById('startPickBtn').addEventListener('click', startRandomPick);
+        document.getElementById('pickerAwardPlus1').addEventListener('click', () => {
+          if (!lastPickedItem) return;
+          updateScore(lastPickedItem.type, lastPickedItem.id, 1, '🎲 抽籤 +1');
+          closeModal('pickerModal');
+          showToast('已為「' + lastPickedItem.name + '」加 1 分');
+        });
+        document.getElementById('pickerAwardPlus2').addEventListener('click', () => {
+          if (!lastPickedItem) return;
+          updateScore(lastPickedItem.type, lastPickedItem.id, 2, '🎲 抽籤 +2');
+          closeModal('pickerModal');
+          showToast('已為「' + lastPickedItem.name + '」加 2 分');
+        });
+
+        document.querySelectorAll('.timer-preset').forEach((btn) => {
+          btn.addEventListener('click', () => setTimerDuration(parseInt(btn.dataset.timerSec, 10)));
+        });
+        document.getElementById('applyCustomTimerBtn').addEventListener('click', () => {
+          const m = Math.max(0, parseInt(document.getElementById('customMinutesInput').value, 10) || 0);
+          const s = Math.max(0, Math.min(59, parseInt(document.getElementById('customSecondsInput').value, 10) || 0));
+          const total = m * 60 + s;
+          if (total <= 0) {
+            showToast('請輸入大於 0 秒的時間');
+            return;
+          }
+          setTimerDuration(total);
+        });
+        document.getElementById('timerStartPauseBtn').addEventListener('click', toggleTimer);
+        document.getElementById('timerResetBtn').addEventListener('click', () => {
+          stopTimerInterval();
+          timerRemaining = timerTotalSeconds;
+          renderTimerUI();
+        });
+
+        document.querySelectorAll('.settings-tab-btn').forEach((btn) => {
+          btn.addEventListener('click', () => switchSettingsTab(btn.dataset.settingsTab));
+        });
+
+        document.getElementById('saveRosterBtn').addEventListener('click', () => {
+          const cls = getActiveClass();
+          const inputs = document.querySelectorAll('#seatEditorGrid input[data-seat-index]');
+          inputs.forEach((inp) => {
+            const idx = parseInt(inp.dataset.seatIndex, 10);
+            const newName = inp.value.trim();
+            if (cls.students[idx]) {
+              cls.students[idx].name = newName;
+              if (!newName) {
+                cls.students[idx].score = 0;
+                cls.students[idx].stamps = 0;
+                cls.students[idx].totalScore = 0;
+              }
+            }
+          });
+
+          const groupLines = document.getElementById('groupNamesInput').value
+            .split('\n').map((s) => s.trim()).filter(Boolean);
+          if (groupLines.length > 0) {
+            cls.groups = groupLines.map((name, idx) => ({
+              id: cls.groups[idx] ? cls.groups[idx].id : 'g_' + Date.now() + '_' + idx,
+              name: name,
+              score: cls.groups[idx] ? cls.groups[idx].score : 0
+            }));
+          }
+
+          saveState();
+          renderAll();
+          closeModal('settingsModal');
+          scheduleAutoSync();
+          showToast('已更新「' + cls.name + '」座位表與小組名單');
+        });
+
+        document.getElementById('saveGasSettingsBtn').addEventListener('click', () => {
+          const url = document.getElementById('gasUrlInput').value.trim();
+          state.gasUrl = url;
+          state.gasAutoSync = document.getElementById('gasAutoSyncCheckbox').checked;
+          gasSyncState = 'idle';
+          saveState();
+          renderGasStatus();
+          showToast(url ? '已儲存 GAS 網址設定' : '已清除 GAS 網址');
+        });
+        document.getElementById('gasPushNowBtn').addEventListener('click', () => {
+          state.gasUrl = document.getElementById('gasUrlInput').value.trim();
+          state.gasAutoSync = document.getElementById('gasAutoSyncCheckbox').checked;
+          saveState();
+          pushToGas(false);
+        });
+        document.getElementById('gasPullNowBtn').addEventListener('click', () => {
+          state.gasUrl = document.getElementById('gasUrlInput').value.trim();
+          saveState();
+          pullFromGas();
+        });
+        document.getElementById('copyGasCodeBtn').addEventListener('click', () => {
+          copyTextToClipboard(GAS_CODE_TEMPLATE);
+        });
+
+        document.getElementById('saveTitleBtn').addEventListener('click', () => {
+          const val = document.getElementById('classTitleInput').value.trim();
+          if (!val) return;
+          state.title = val;
+          saveState();
+          renderHeader();
+          showToast('已更新標題');
+        });
+
+        document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+        document.getElementById('settingsExportCsvBtn').addEventListener('click', exportCsv);
+
+        document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+          const cls = getActiveClass();
+          openConfirm('清除計分紀錄', '確定清除「' + cls.name + '」的所有計分紀錄嗎？（不會影響目前分數）', () => {
+            cls.history = [];
+            saveState();
+            renderAll();
+            showToast('已清除計分紀錄');
+          });
+        });
+
+        document.getElementById('factoryResetBtn').addEventListener('click', () => {
+          openConfirm('還原預設座位表', '確定將所有班別還原成初始設定嗎？', () => {
+            const preservedGasUrl = state.gasUrl;
+            state = createDefaultState();
+            state.gasUrl = preservedGasUrl;
+            globalStampMode = false;
+            stampModeSeats.clear();
+            undoStack = [];
+            saveState();
+            closeModal('settingsModal');
+            renderAll();
+            showToast('已還原預設設定');
+          });
+        });
+
+        document.getElementById('claimNewEggBtn').addEventListener('click', () => {
+          if (!currentPokeInfoSeatId) return;
+          const cls = getActiveClass();
+          const student = cls.students.find((s) => s.id === currentPokeInfoSeatId);
+          if (!student) return;
+          const poke = ensurePokemon(student);
+          if (poke.stage >= 3) {
+            const form = getPokemonForm(poke);
+            poke.collected.push({ id: form.id, name: form.name, emoji: form.emoji });
+            let nextLine = Math.floor(Math.random() * POKEMON_LINES.length);
+            if (nextLine === poke.lineIdx) nextLine = (nextLine + 1) % POKEMON_LINES.length;
+            poke.lineIdx = nextLine;
+            poke.stage = 0;
+            poke.stepsSinceEvo = 0;
+            saveState();
+            renderAll();
+            closeModal('pokeInfoModal');
+            playTone('plus');
+            scheduleAutoSync();
+            showToast(student.name + ' 領取咗一隻新精靈蛋！');
+          }
+        });
+
+        document.getElementById('confirmCancelBtn').addEventListener('click', () => {
+          confirmCallback = null;
+          closeModal('confirmModal');
+        });
+        document.getElementById('confirmOkBtn').addEventListener('click', () => {
+          const cb = confirmCallback;
+          confirmCallback = null;
+          closeModal('confirmModal');
+          if (typeof cb === 'function') cb();
+        });
+      }
+
+      bindEvents();
+      initSeatDragAndDrop();
+      renderTimerUI();
+      renderAll();
+      if (state.gasAutoSync && state.gasUrl && !state.gasUrl.includes('/macros/library/')) {
+        pullFromGas(true);
+      }
+    })();
+  </script>
+</body>
+</html>
