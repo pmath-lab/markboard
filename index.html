@@ -229,54 +229,88 @@
 
   <!-- Main Content -->
   <main class="flex-1 min-h-0 max-w-[1440px] w-full mx-auto px-3 sm:px-5 py-2 flex flex-col overflow-hidden">
-    <!-- Class Tabs Bar (Replaces old 1-6 headers; switches between classes) -->
-    <div class="flex items-center justify-between gap-2 mb-1.5 shrink-0">
-      <div class="flex items-center gap-1.5 overflow-x-auto py-0.5">
-        <div id="classTabsList" class="flex items-center gap-1.5"></div>
-        <button id="addClassBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-white hover:bg-indigo-50 text-indigo-600 border border-dashed border-indigo-300 shrink-0 transition-colors">
-          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-          <span>新增班別</span>
+    <!-- Compact Dropdown Toolbar: 左上「班別 ▾」 & 右上「功能 ▾」 -->
+    <div class="flex items-center justify-between gap-2 mb-1.5 shrink-0 relative z-20">
+      <!-- Left: 班別 Dropdown -->
+      <div class="relative" id="classDropdownWrap">
+        <button id="classDropdownBtn" type="button" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>班別：</span>
+          <span id="currentClassLabel">5C</span>
+          <span id="currentClassCount" class="text-[11px] px-1.5 py-0.2 rounded-full bg-white/20">24</span>
+          <i data-lucide="chevron-down" class="w-4 h-4 opacity-90"></i>
         </button>
+
+        <div id="classDropdownMenu" class="hidden absolute left-0 mt-1.5 w-52 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-40">
+          <div id="classTabsList" class="max-h-60 overflow-y-auto px-1.5 space-y-0.5"></div>
+          <div class="my-1.5 border-t border-slate-100"></div>
+          <div class="px-1.5">
+            <button id="addClassBtn" type="button" class="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>新增班別</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div id="boardControls" class="flex items-center gap-1.5 shrink-0">
-        <button id="classBonusBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors">
-          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          <span>全體 +1</span>
+      <!-- Right: Active Mode Quick Exit + Sync Pill + 功能 Dropdown -->
+      <div id="boardControls" class="flex items-center gap-2 shrink-0">
+        <button id="quickExitStampBtn" type="button" class="hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border border-yellow-500 shadow-xs transition-colors">
+          <span>💮 吸印中 (結束)</span>
         </button>
-        <button id="globalStampModeBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border border-yellow-300 transition-colors">
-          <span>💮</span>
-          <span id="globalStampModeLabel">全體吸印</span>
-        </button>
-        <button id="battleRoyaleBtn" type="button" title="所有精靈跳出來大亂鬥！" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-xs transition-colors">
-          <span>⚔️</span>
-          <span>大亂鬥</span>
-        </button>
-        <button id="resetEggsBtn" type="button" title="將本班所有精靈變回精靈蛋（不影響分數）" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 transition-colors">
-          <span>🥚</span>
-          <span>蛋重置</span>
-        </button>
-        <button id="swapModeBtn" type="button" title="開啟或關閉拖曳調位模式" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors">
+        <button id="quickExitSwapBtn" type="button" class="hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors">
           <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
-          <span id="swapModeLabel">調位</span>
+          <span>調位中 (完成)</span>
         </button>
-        <button id="undoBtn" type="button" disabled class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-          <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
-          <span class="hidden sm:inline">撤銷</span>
-        </button>
-        <button id="celebrateBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors">
-          <i data-lucide="party-popper" class="w-3.5 h-3.5 text-rose-500"></i>
-          <span class="hidden sm:inline">排行</span>
-        </button>
-        <span id="gasStatusPill" class="hidden xl:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-600">
+
+        <span id="gasStatusPill" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-slate-100 text-slate-600">
           <span id="gasStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-          <span id="gasStatusText">已填 GAS</span>
+          <span id="gasStatusText">自動同步已開啟</span>
         </span>
 
-        <button id="resetScoresBtn" type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 transition-colors">
-          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-          <span class="hidden sm:inline">總分歸零</span>
-        </button>
+        <div class="relative" id="actionsDropdownWrap">
+          <button id="actionsDropdownBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition-colors">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+            <span>功能</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 opacity-90"></i>
+          </button>
+
+          <div id="actionsDropdownMenu" class="hidden absolute right-0 mt-1.5 w-52 bg-white rounded-2xl shadow-xl border border-slate-200 p-1.5 z-40 space-y-0.5">
+            <button id="classBonusBtn" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition-colors">
+              <i data-lucide="sparkles" class="w-4 h-4 text-emerald-600"></i>
+              <span>全體 +1</span>
+            </button>
+            <button id="globalStampModeBtn" type="button" class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold text-yellow-900 hover:bg-yellow-50 transition-colors">
+              <span class="flex items-center gap-2.5"><span>💮</span><span id="globalStampModeLabel">全體吸印</span></span>
+              <span id="stampModeBadge" class="hidden text-[10px] px-1.5 py-0.5 rounded bg-yellow-300 text-yellow-950">ON</span>
+            </button>
+            <button id="battleRoyaleBtn" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-violet-700 hover:bg-violet-50 transition-colors">
+              <span>⚔️</span>
+              <span>大亂鬥</span>
+            </button>
+            <button id="swapModeBtn" type="button" class="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors">
+              <span class="flex items-center gap-2.5"><i data-lucide="arrow-left-right" class="w-4 h-4"></i><span id="swapModeLabel">調位</span></span>
+              <span id="swapModeBadge" class="hidden text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white">ON</span>
+            </button>
+            <button id="undoBtn" type="button" disabled class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <i data-lucide="undo-2" class="w-4 h-4"></i>
+              <span>撤銷</span>
+            </button>
+            <button id="celebrateBtn" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">
+              <i data-lucide="party-popper" class="w-4 h-4 text-rose-500"></i>
+              <span>排行</span>
+            </button>
+            <div class="my-1 border-t border-slate-100"></div>
+            <button id="resetEggsBtn" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-amber-800 hover:bg-amber-50 transition-colors">
+              <span>🥚</span>
+              <span>蛋重置</span>
+            </button>
+            <button id="resetScoresBtn" type="button" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors">
+              <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+              <span>總分歸零</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1506,17 +1540,27 @@
       }
 
       function renderClassTabs() {
+        const activeCls = getActiveClass();
+        const activeCount = activeCls.students.filter((s) => s.name).length;
+        document.getElementById('currentClassLabel').textContent = activeCls.name;
+        document.getElementById('currentClassCount').textContent = activeCount;
+
         const container = document.getElementById('classTabsList');
         container.innerHTML = state.classes.map((cls) => {
           const active = cls.id === state.activeClassId;
           const count = cls.students.filter((s) => s.name).length;
           return `
-            <div class="inline-flex items-center rounded-lg border ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'} transition-all shrink-0">
-              <button type="button" data-switch-class="${cls.id}" class="px-3 py-1 text-xs font-extrabold flex items-center gap-1.5">
-                <span>${escapeHtml(cls.name)}</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded-full ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}">${count}</span>
+            <div class="flex items-center justify-between rounded-xl ${active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100'} transition-colors">
+              <button type="button" data-switch-class="${cls.id}" class="flex-1 flex items-center justify-between gap-2 px-2.5 py-2 text-xs font-extrabold text-left">
+                <span class="flex items-center gap-1.5">
+                  <span>${active ? '✓' : ''}</span>
+                  <span>${escapeHtml(cls.name)}</span>
+                </span>
+                <span class="text-[11px] px-1.5 py-0.2 rounded-full ${active ? 'bg-indigo-200/70 text-indigo-800' : 'bg-slate-100 text-slate-500'}">${count}人</span>
               </button>
-              ${active ? `<button type="button" data-edit-class="${cls.id}" title="修改或刪除此班別" class="pr-2 pl-0.5 py-1 text-indigo-100 hover:text-white"><i data-lucide="pencil" class="w-3 h-3"></i></button>` : ''}
+              <button type="button" data-edit-class="${cls.id}" title="修改或刪除此班別" class="p-2 text-slate-400 hover:text-indigo-600">
+                <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+              </button>
             </div>
           `;
         }).join('');
@@ -1550,28 +1594,18 @@
             (active ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600');
         });
 
-        const globalStampBtn = document.getElementById('globalStampModeBtn');
-        const globalStampLabel = document.getElementById('globalStampModeLabel');
-        globalStampBtn.classList.toggle('hidden', !isStudents);
+        document.getElementById('globalStampModeBtn').classList.toggle('hidden', !isStudents);
         document.getElementById('battleRoyaleBtn').classList.toggle('hidden', !isStudents);
         document.getElementById('resetEggsBtn').classList.toggle('hidden', !isStudents);
-        const swapBtn = document.getElementById('swapModeBtn');
-        const swapLabel = document.getElementById('swapModeLabel');
-        swapBtn.classList.toggle('hidden', !isStudents);
-        if (seatSwapMode) {
-          swapBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 shadow-xs transition-colors';
-          swapLabel.textContent = '調位中(按此完成)';
-        } else {
-          swapBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors';
-          swapLabel.textContent = '調位';
-        }
-        if (globalStampMode) {
-          globalStampBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border border-yellow-500 shadow-xs transition-colors';
-          globalStampLabel.textContent = '吸印中(結束)';
-        } else {
-          globalStampBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-900 border border-yellow-300 transition-colors';
-          globalStampLabel.textContent = '全體吸印';
-        }
+        document.getElementById('swapModeBtn').classList.toggle('hidden', !isStudents);
+
+        document.getElementById('stampModeBadge').classList.toggle('hidden', !globalStampMode);
+        document.getElementById('globalStampModeLabel').textContent = globalStampMode ? '結束全體吸印' : '全體吸印';
+        document.getElementById('quickExitStampBtn').classList.toggle('hidden', !(isStudents && globalStampMode));
+
+        document.getElementById('swapModeBadge').classList.toggle('hidden', !seatSwapMode);
+        document.getElementById('swapModeLabel').textContent = seatSwapMode ? '完成調位' : '調位';
+        document.getElementById('quickExitSwapBtn').classList.toggle('hidden', !(isStudents && seatSwapMode));
 
 
 
@@ -2854,17 +2888,60 @@
           });
         });
 
-        // Class tabs bar events
+        function closeAllDropdowns() {
+          document.getElementById('classDropdownMenu').classList.add('hidden');
+          document.getElementById('actionsDropdownMenu').classList.add('hidden');
+        }
+
+        document.getElementById('classDropdownBtn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.getElementById('actionsDropdownMenu').classList.add('hidden');
+          document.getElementById('classDropdownMenu').classList.toggle('hidden');
+        });
+
+        document.getElementById('actionsDropdownBtn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.getElementById('classDropdownMenu').classList.add('hidden');
+          document.getElementById('actionsDropdownMenu').classList.toggle('hidden');
+        });
+
+        document.getElementById('actionsDropdownMenu').addEventListener('click', () => {
+          document.getElementById('actionsDropdownMenu').classList.add('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('#classDropdownWrap') && !e.target.closest('#actionsDropdownWrap')) {
+            closeAllDropdowns();
+          }
+        });
+
+        document.getElementById('quickExitStampBtn').addEventListener('click', () => {
+          globalStampMode = false;
+          stampModeSeats.clear();
+          renderAll();
+          showToast('已返回正常計分模式');
+        });
+
+        document.getElementById('quickExitSwapBtn').addEventListener('click', () => {
+          seatSwapMode = false;
+          renderAll();
+          showToast('已取消調位模式');
+        });
+
+        // Class dropdown events
         document.getElementById('classTabsList').addEventListener('click', (e) => {
           const editBtn = e.target.closest('button[data-edit-class]');
           if (editBtn) {
+            closeAllDropdowns();
             openClassTabModal(editBtn.dataset.editClass);
             return;
           }
           const switchBtn = e.target.closest('button[data-switch-class]');
           if (switchBtn) {
+            closeAllDropdowns();
             state.activeClassId = switchBtn.dataset.switchClass;
             globalStampMode = false;
+            seatSwapMode = false;
             stampModeSeats.clear();
             saveState();
             renderAll();
@@ -2874,7 +2951,7 @@
           }
         });
 
-        document.getElementById('addClassBtn').addEventListener('click', () => openClassTabModal(null));
+        document.getElementById('addClassBtn').addEventListener('click', () => { closeAllDropdowns(); openClassTabModal(null); });
         document.getElementById('saveClassTabBtn').addEventListener('click', saveClassTabModal);
         document.getElementById('classTabNameInput').addEventListener('keydown', (e) => {
           if (e.key === 'Enter') saveClassTabModal();
