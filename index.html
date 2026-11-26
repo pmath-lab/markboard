@@ -256,6 +256,10 @@
           <span>🥚</span>
           <span>蛋重置</span>
         </button>
+        <button id="swapModeBtn" type="button" title="開啟或關閉拖曳調位模式" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors">
+          <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
+          <span id="swapModeLabel">調位</span>
+        </button>
         <button id="undoBtn" type="button" disabled class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           <i data-lucide="undo-2" class="w-3.5 h-3.5"></i>
           <span class="hidden sm:inline">撤銷</span>
@@ -271,7 +275,7 @@
 
         <button id="resetScoresBtn" type="button" class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 transition-colors">
           <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-          <span class="hidden sm:inline">歸零</span>
+          <span class="hidden sm:inline">總分歸零</span>
         </button>
       </div>
     </div>
@@ -791,6 +795,7 @@
       let editingClassTabId = null; // null => adding new class
 
       let globalStampMode = false;
+      let seatSwapMode = false;
       let stampModeSeats = new Set();
 
       let pickerScope = 'students';
@@ -1550,6 +1555,16 @@
         globalStampBtn.classList.toggle('hidden', !isStudents);
         document.getElementById('battleRoyaleBtn').classList.toggle('hidden', !isStudents);
         document.getElementById('resetEggsBtn').classList.toggle('hidden', !isStudents);
+        const swapBtn = document.getElementById('swapModeBtn');
+        const swapLabel = document.getElementById('swapModeLabel');
+        swapBtn.classList.toggle('hidden', !isStudents);
+        if (seatSwapMode) {
+          swapBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-700 shadow-xs transition-colors';
+          swapLabel.textContent = '調位中(按此完成)';
+        } else {
+          swapBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors';
+          swapLabel.textContent = '調位';
+        }
         if (globalStampMode) {
           globalStampBtn.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border border-yellow-500 shadow-xs transition-colors';
           globalStampLabel.textContent = '吸印中(結束)';
@@ -1582,7 +1597,7 @@
         grid.innerHTML = cls.students.map((seat, idx) => {
           if (!seat.name || seat.name.trim() === '') {
             return `
-              <div data-seat-idx="${idx}" class="h-full rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/70 flex flex-col items-center justify-center text-slate-400 select-none transition-all hover:border-indigo-300 hover:bg-indigo-50/30">
+              <div data-seat-idx="${idx}" class="h-full rounded-xl border-2 border-dashed ${seatSwapMode ? 'border-indigo-300 bg-indigo-50/30' : 'border-slate-200 bg-slate-50/70'} flex flex-col items-center justify-center text-slate-400 select-none transition-all hover:border-indigo-300 hover:bg-indigo-50/30">
                 <button type="button" data-action="edit-name" data-seat-idx="${idx}" class="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-400 hover:text-indigo-600 hover:bg-white transition-colors cursor-pointer">
                   + 空位
                 </button>
@@ -1616,8 +1631,13 @@
           const pokeForm = getPokemonForm(poke);
           const idleDelay = (idx % 7) * 0.35;
 
+          const swapCardClass = seatSwapMode
+            ? 'cursor-grab active:cursor-grabbing touch-none ring-2 ring-indigo-300/80 border-indigo-400'
+            : '';
+          const swapCardTitle = seatSwapMode ? '調位模式：按住拖曳去目標座位' : '';
+
           return `
-            <div data-card-id="${seat.id}" data-seat-idx="${idx}" title="按住空白位置可拖曳調位" class="relative h-full rounded-xl border-2 ${cardTheme} px-2 py-1.5 flex flex-col justify-between gap-1 transition-all hover:shadow-md select-none overflow-hidden cursor-grab active:cursor-grabbing touch-none">
+            <div data-card-id="${seat.id}" data-seat-idx="${idx}" title="${swapCardTitle}" class="relative h-full rounded-xl border-2 ${cardTheme} ${swapCardClass} px-2 py-1.5 flex flex-col justify-between gap-1 transition-all hover:shadow-md select-none overflow-hidden">
               <div class="flex items-center justify-between gap-1 shrink-0">
                 <div>
                   <div class="flex items-center gap-0.5 whitespace-nowrap">
@@ -2099,8 +2119,8 @@
         }
 
         grid.addEventListener('pointerdown', (e) => {
+          if (!seatSwapMode) return;
           if (e.button !== undefined && e.button !== 0) return;
-          // Drag ONLY from blank areas of the card (never hijack clicks on name, Pokémon, cells, or -1/+1/吸印 buttons!)
           if (e.target.closest('button')) return;
 
           const card = e.target.closest('[data-seat-idx]');
@@ -2934,6 +2954,12 @@
           );
         });
 
+        document.getElementById('swapModeBtn').addEventListener('click', () => {
+          seatSwapMode = !seatSwapMode;
+          renderAll();
+          showToast(seatSwapMode ? '已開啟調位模式：按住學生面版拖曳調位' : '已取消調位模式');
+        });
+
         document.getElementById('globalStampModeBtn').addEventListener('click', () => {
           globalStampMode = !globalStampMode;
           if (!globalStampMode) stampModeSeats.clear();
@@ -2971,7 +2997,7 @@
           const cls = getActiveClass();
           const isStudents = state.activeTab === 'students';
           openConfirm(
-            '歸零分數',
+            '總分歸零',
             isStudents
               ? '確定將「' + cls.name + '」所有學生的目前可用分同累積總分歸零嗎？'
               : '確定將「' + cls.name + '」所有小組分數歸零嗎？',
