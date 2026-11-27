@@ -1690,14 +1690,14 @@
                 </button>
               </div>
 
-              <div class="flex-1 min-h-[34px] p-1 rounded-lg border grid grid-cols-5 grid-rows-2 gap-1 ${inStamp ? 'bg-yellow-50/70 border-yellow-300' : 'bg-slate-50 border-slate-200/80'}">
-                ${cellsHtml}
-              </div>
-
-              <div class="grid grid-cols-3 gap-1 shrink-0">
-                <button type="button" data-action="score" data-type="student" data-id="${seat.id}" data-delta="-1" class="py-0.5 rounded-md font-bold text-[11px] active:scale-95 transition-all cursor-pointer ${inStamp ? 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-xs' : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70'}">-1</button>
-                <button type="button" data-action="score" data-type="student" data-id="${seat.id}" data-delta="1" class="py-0.5 rounded-md font-bold text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all cursor-pointer">+1</button>
-                <button type="button" data-action="toggle-stamp" data-id="${seat.id}" class="py-0.5 rounded-md font-bold text-[11px] active:scale-95 transition-all cursor-pointer ${inStamp ? 'bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border border-yellow-600/40' : 'bg-yellow-50 hover:bg-yellow-100 text-yellow-800 border border-yellow-300/80'}">${inStamp ? '完成' : '吸印'}</button>
+              <div class="flex-1 min-h-[42px] flex items-stretch gap-1.5">
+                <div class="flex-1 p-1 rounded-lg border grid grid-cols-5 grid-rows-2 gap-1 ${inStamp ? 'bg-yellow-50/70 border-yellow-300' : 'bg-slate-50 border-slate-200/80'}">
+                  ${cellsHtml}
+                </div>
+                <div class="w-9 shrink-0 grid grid-rows-2 gap-1">
+                  <button type="button" data-action="score" data-type="student" data-id="${seat.id}" data-delta="1" class="rounded-md font-extrabold text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all cursor-pointer flex items-center justify-center">+1</button>
+                  <button type="button" data-action="score" data-type="student" data-id="${seat.id}" data-delta="-1" class="rounded-md font-extrabold text-[11px] active:scale-95 transition-all cursor-pointer flex items-center justify-center ${inStamp ? 'bg-yellow-500 hover:bg-yellow-600 text-white shadow-xs' : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70'}">-1</button>
+                </div>
               </div>
             </div>
           `;
